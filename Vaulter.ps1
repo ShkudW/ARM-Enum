@@ -2042,12 +2042,12 @@ $jsonEsc
   const keys    = data.filter(isKey);
   const certs   = data.filter(isCert);
 
-  // עדכון מונים
+  
   document.getElementById('countSecrets').textContent = `Secrets: ${secrets.length}`;
   document.getElementById('countKeys').textContent    = `Keys: ${keys.length}`;
   document.getElementById('countCerts').textContent   = `Certificates: ${certs.length}`;
 
-  // Helperים
+  
   const esc = s => (s ?? '').toString()
       .replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
