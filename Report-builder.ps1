@@ -1,4 +1,4 @@
-function New-KVHtmlReport {
+function Report-builder {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
