@@ -9,8 +9,8 @@ you can use it:
 - for enumeration on WebApps with EnumWebApp.ps1
 
 ### Vaulter
-this tool is checking if the key vault is manged by RBAC or by Access Policy, and abuse yout Ideneity's pemissions for adding:
-- "Key Vault Administrator" role (RBAC), and adding your IP Addres to NetWork Rule.
+This tool is checking if the key vault is manged by RBAC or by Access Policy, and abuse yout Ideneity's pemissions for :
+- Adding "Key Vault Administrator" role (RBAC), and adding your IP Addres to NetWork Rule.
 - Adding your Object ID (of your Identity) (Access Policy), and adding your IP Addres to NetWork Rule.
 
 ```powershell
