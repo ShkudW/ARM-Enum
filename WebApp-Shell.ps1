@@ -12,7 +12,7 @@ function Show-ClientLoginGui {
     $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Vaulter" Height="560" Width="720"
+        Title="ARM-Enum and Abuse" Height="560" Width="720"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         Background="#0B1220" FontFamily="Segoe UI" SnapsToDevicePixels="True">
   <Window.Resources>
