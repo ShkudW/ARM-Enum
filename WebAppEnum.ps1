@@ -324,7 +324,7 @@ function Test-WebAppSurface {
         Write-Host "[*] Findings saved to: $out" -ForegroundColor Yellow
     }
 
-    return ,$findings  # כוחליסט
+    return ,$findings
 }
 
 
