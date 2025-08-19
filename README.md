@@ -48,7 +48,10 @@ Import-Module WebAppEnum.ps1
 ```powershell
 WebAppEnum
 ```
-
+You can use "-check' argument for full enumeration
+```powershell
+WebAppEnum -Check
+```
 Enter Service Principal Credentials:
 
 <img width="706" height="553" alt="image" src="https://github.com/user-attachments/assets/2ddd2a6e-83a2-4a02-8026-eadb4c6f2c2a" />
