@@ -4,6 +4,229 @@ function WebAppEnum {
 		[switch]$Check
 	)
 
+
+    function Show-ClientLoginGui {
+    param([switch]$Topmost)
+
+    if ($Host.Runspace.ApartmentState -ne 'STA') {
+        Write-Warning "Run with pwsh -STA"
+    }
+
+    Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
+
+    $xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Vaulter" Height="560" Width="720"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Background="#0B1220" FontFamily="Segoe UI" SnapsToDevicePixels="True">
+  <Window.Resources>
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="22" ShadowDepth="0" Color="#99000000"/>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="#0F1626"/>
+      <Setter Property="Foreground" Value="#E5E7EB"/>
+      <Setter Property="BorderBrush" Value="#334155"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="8,4"/>
+      <Setter Property="Height" Value="34"/>
+    </Style>
+    <Style TargetType="PasswordBox">
+      <Setter Property="Background" Value="#0F1626"/>
+      <Setter Property="Foreground" Value="#E5E7EB"/>
+      <Setter Property="BorderBrush" Value="#334155"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="8,4"/>
+      <Setter Property="Height" Value="34"/>
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="Padding" Value="18,10"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="22">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="140"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Header (animated gradient) -->
+    <Border Grid.Row="0" CornerRadius="18" Margin="0,0,0,14">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop x:Name="gs1" Color="#3B82F6" Offset="0"/>
+          <GradientStop x:Name="gs2" Color="#8B5CF6" Offset="1"/>
+        </LinearGradientBrush>
+      </Border.Background>
+      <Grid Margin="18">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="WebApp Enumeration" Foreground="#f8fafc" FontSize="22" FontWeight="Bold"/>
+          <TextBlock Text="By @ShkudW - https://github.com/ShkudW/ARM-Enum " Foreground="#E0E7FF" FontSize="13"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Card -->
+    <Border Grid.Row="1" CornerRadius="18" Background="#101828" Padding="22" Effect="{StaticResource CardShadow}">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="12"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="170"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Client ID -->
+        <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,6,10,6" Foreground="#CBD5E1" FontSize="13" Text="Client ID"/>
+        <TextBox   x:Name="ClientIdBox" Grid.Row="0" Grid.Column="1" Margin="0,4,0,4" ToolTip="GUID of the App Registration"/>
+
+        <!-- Secret -->
+        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,10,6" Foreground="#CBD5E1" FontSize="13" Text="Client Secret"/>
+        <PasswordBox x:Name="SecretBox" Grid.Row="1" Grid.Column="1" Margin="0,4,0,4" ToolTip="App client secret"/>
+        <TextBox   x:Name="SecretPlainBox" Grid.Row="1" Grid.Column="1" Margin="0,4,0,4" Visibility="Collapsed" ToolTip="App client secret (visible)"/>
+        <CheckBox  x:Name="ShowSecretChk" Content="Show" Grid.Row="1" Grid.Column="2" Margin="10,6,0,4"
+                   Foreground="#B4C6FC" VerticalAlignment="Center"/>
+
+        <!-- Domain -->
+        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,6,10,6" Foreground="#CBD5E1" FontSize="13" Text="Domain"/>
+        <TextBox   x:Name="DomainBox" Grid.Row="2" Grid.Column="1" Margin="0,4,0,4" ToolTip="Tenant domain, e.g. contoso.com"/>
+
+        <!-- Inline error -->
+        <TextBlock x:Name="ErrorText" Grid.Row="4" Grid.ColumnSpan="3"
+                   Foreground="#FCA5A5" FontSize="12" Visibility="Collapsed"/>
+      </Grid>
+    </Border>
+
+    <!-- Buttons -->
+    <DockPanel Grid.Row="2" Margin="0,16,0,0" LastChildFill="False">
+      <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+        <Button x:Name="CancelBtn" Content="Cancel" Margin="0,0,8,0"
+                Background="#0E1726" Foreground="#CBD5E1" BorderBrush="#334155" IsCancel="True"/>
+        <Button x:Name="OkBtn" Content="Continue"
+                Background="#3B82F6" Foreground="White" BorderBrush="#2563EB" IsDefault="True"/>
+      </StackPanel>
+    </DockPanel>
+  </Grid>
+</Window>
+"@
+
+    $xdoc = New-Object System.Xml.XmlDocument
+    $xdoc.LoadXml($xaml)
+    $reader  = New-Object System.Xml.XmlNodeReader $xdoc
+    $window  = [Windows.Markup.XamlReader]::Load($reader)
+
+    $ClientIdBox    = $window.FindName("ClientIdBox")
+    $SecretBox      = $window.FindName("SecretBox")
+    $SecretPlainBox = $window.FindName("SecretPlainBox")
+    $ShowSecretChk  = $window.FindName("ShowSecretChk")
+    $DomainBox      = $window.FindName("DomainBox")
+    $OkBtn          = $window.FindName("OkBtn")
+    $CancelBtn      = $window.FindName("CancelBtn")
+    $ErrorText      = $window.FindName("ErrorText")
+    $gs1            = $window.FindName("gs1")
+    $gs2            = $window.FindName("gs2")
+
+    if ($Topmost) { $window.Topmost = $true }
+
+    $window.Add_Loaded({
+        $c1 = [Windows.Media.ColorConverter]::ConvertFromString("#3B82F6")
+        $c2 = [Windows.Media.ColorConverter]::ConvertFromString("#8B5CF6")
+        $c3 = [Windows.Media.ColorConverter]::ConvertFromString("#06B6D4")
+        $c4 = [Windows.Media.ColorConverter]::ConvertFromString("#22D3EE")
+
+        $a1 = New-Object Windows.Media.Animation.ColorAnimation($c1, $c3, (New-Object Windows.Duration([TimeSpan]::FromSeconds(6))))
+        $a1.AutoReverse = $true; $a1.RepeatBehavior = [Windows.Media.Animation.RepeatBehavior]::Forever
+        $a2 = New-Object Windows.Media.Animation.ColorAnimation($c2, $c4, (New-Object Windows.Duration([TimeSpan]::FromSeconds(6))))
+        $a2.AutoReverse = $true; $a2.RepeatBehavior = [Windows.Media.Animation.RepeatBehavior]::Forever
+
+        $gs1.BeginAnimation([Windows.Media.GradientStop]::ColorProperty, $a1)
+        $gs2.BeginAnimation([Windows.Media.GradientStop]::ColorProperty, $a2)
+
+        $ClientIdBox.Focus() | Out-Null
+    })
+
+  
+    $ShowSecretChk.Add_Checked({
+        $SecretPlainBox.Text       = $SecretBox.Password
+        $SecretPlainBox.Visibility = "Visible"
+        $SecretBox.Visibility      = "Collapsed"
+    })
+    $ShowSecretChk.Add_Unchecked({
+        $SecretBox.Password        = $SecretPlainBox.Text
+        $SecretPlainBox.Visibility = "Collapsed"
+        $SecretBox.Visibility      = "Visible"
+    })
+
+  
+    $handler = {
+        $OkBtn.RaiseEvent((New-Object Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
+    }
+    $ClientIdBox.Add_KeyDown({ if ($_.Key -eq 'Return') { & $handler } })
+    $SecretBox.Add_KeyDown({ if ($_.Key -eq 'Return') { & $handler } })
+    $SecretPlainBox.Add_KeyDown({ if ($_.Key -eq 'Return') { & $handler } })
+    $DomainBox.Add_KeyDown({ if ($_.Key -eq 'Return') { & $handler } })
+
+
+    $OkBtn.Add_Click({
+        $ErrorText.Visibility = "Collapsed"
+        $cid = $ClientIdBox.Text.Trim()
+        $dom = $DomainBox.Text.Trim()
+        $sec = if ($ShowSecretChk.IsChecked) { $SecretPlainBox.Text } else { $SecretBox.Password }
+
+        if ([string]::IsNullOrWhiteSpace($cid) -or [string]::IsNullOrWhiteSpace($sec) -or [string]::IsNullOrWhiteSpace($dom)) {
+            $ErrorText.Text = "Please fill all fields."
+            $ErrorText.Visibility = "Visible"
+            return
+        }
+
+        $tmpGuid = [Guid]::Empty
+        if (-not [Guid]::TryParse($cid, [ref]$tmpGuid)) {
+            $ErrorText.Text = "Client ID must be a valid GUID."
+            $ErrorText.Visibility = "Visible"
+            return
+        }
+
+        $result = [PSCustomObject]@{
+            ClientId     = $cid
+            ClientSecret = $sec
+            Domain       = $dom
+        }
+        $window.Tag = $result
+        $window.DialogResult = $true
+        $window.Close()
+    })
+
+    $CancelBtn.Add_Click({ $window.DialogResult = $false; $window.Close() })
+
+    $null = $window.ShowDialog()
+    if ($window.DialogResult -eq $true) { return $window.Tag }
+}
+
+
+    function GetTenantID{param([string]$TenantName)
+            try {
+                $resp = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$TenantName/.well-known/openid-configuration" -ErrorAction Stop
+                    $TenantID = ($resp.issuer -split '/')[3]
+                } catch {
+                    Write-Host "[!] The specified domain is invalid or not reachable." -ForegroundColor Red
+                }
+            return $TenantID
+
+    }
 	function GetAzureARMToken {param ([string]$RefreshToken,[string]$ClientID,[string]$ClientSecret,[string]$TenantID)
 				$Url = "https://login.microsoftonline.com/$TenantID/oauth2/v2.0/token"
 				$Headers = @{"User-Agent"= "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"}
@@ -465,10 +688,6 @@ function Test-WebAppSurface {
 			Write-Host ("Subscription: {0} - {1} | Permission: {2}" -f $sub.DisplayName, $sub.SubscriptionId, $subpermission) -ForegroundColor Cyan
 			Write-Host "-------------------------------------------------------------------------------" -ForegroundColor Cyan
 
-			if ($subpermission -in @('allowed only read','no effective high-level permissions')) {
-				Write-Host "[!] Skipping subscription due to insufficient permissions: $subpermission"
-				continue
-			}
 
 			$listUrl = "https://management.azure.com/subscriptions/$($sub.SubscriptionId)/providers/Microsoft.Web/sites?api-version=2024-11-01"
 
@@ -553,11 +772,20 @@ function Test-WebAppSurface {
 	}
 
 	function main{
-		
-		$ARM = GetAzureARMToken -ClientID "" -ClientSecret "" -TenantID ""
-		$Subs = GetSubscriptions -AzureARMToken $ARM
-		
-		Get-AllWebApps -Subscriptions $Subs -AzureARMToken $ARM -ClientID "" -ClientSecret "" -TenantID ""
+
+        $creds = Show-ClientLoginGui -Topmost
+        if (-not $creds) { Write-Host "Canceled." -ForegroundColor Yellow; return }
+
+        $script:ClientId     = $creds.ClientId
+        $script:ClientSecret = $creds.ClientSecret
+        $DomainName          = $creds.Domain
+
+
+        $script:TenantId = GetTenantID -TenantName $DomainName
+		$ARM = GetAzureARMToken -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId
+        $script:ArmToken = $ARM
+        $subs = GetSubscriptions -AzureARMToken $ARM
+        Get-AllWebApps -AzureARMToken $ARM -Subscriptions $subs -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId 
 
 	}
 	
