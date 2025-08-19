@@ -2,10 +2,11 @@
 Collection Tools for Enumeration and abuse Azure WebApp and Azure Key Vaults recources
 
 These tools developed for help IT Administrators (not not realy..)...
-These tools are developed for Red Teamers, who secceded to find high privileged Service Prinicpal with high permissions on ARM API.
-for data exflitration with Vaulter.ps1
-or for letaral movment with WebApp-Shell.ps1
-or for enumeration on WebApps with EnumWebApp.ps1
+These tools are developed for Red Teamers, whos secceded to find a high privileged Service Prinicpal with high permissions on ARM API.
+you can use it:
+- for data exflitration with Vaulter.ps1
+- for letaral movment with WebApp-Shell.ps1
+- for enumeration on WebApps with EnumWebApp.ps1
 
 ### Vaulter
 this tool is checking if the key vault is manged by RBAC or by Access Policy, and abuse yout Ideneity's pemissions for adding:
