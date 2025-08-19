@@ -590,39 +590,35 @@ function GetTenantID{param([string]$TenantName)
         }
     }
 
-    function Start-WebAppShell {
-        param([pscustomobject]$App)
+function Start-WebAppShell {
+    param([pscustomobject]$App)
 
+    while ($true) {
+        
         if (-not $App) {
             if (-not $global:WebApps -or $global:WebApps.Count -eq 0) {
-                throw "No WebApps in memory. Run Get-WebApp first."
+                Write-Host "No WebApps in memory. Run Get-WebApp first." -ForegroundColor Yellow
+                return
             }
-
-            if ($global:WebApps.Count -eq 1) { $App = $global:WebApps[0] }
-            else {
-                for ($i=0; $i -lt $global:WebApps.Count; $i++) {
-                    $item = $global:WebApps[$i]
-                    "{0}. {1} ({2}) [{3}\{4}]" -f $i, $item.Name, $item.Platform, $item.SubscriptionId, $item.ResourceGroup
-                }
-                $selRaw = Read-Host "Select index"
-                if (-not ($selRaw -match '^\d+$')) { Write-Host "Invalid selection." -ForegroundColor Yellow; return }
-                $sel = [int]$selRaw
-                if ($sel -lt 0 -or $sel -ge $global:WebApps.Count) { Write-Host "Invalid selection." -ForegroundColor Yellow; return }
-                $App = $global:WebApps[$sel]
-            }
+            $App = Select-WebApp
+            if (-not $App) { Write-Host "Selection cancelled." -ForegroundColor Yellow; return }
         }
 
-       
+        
         if (-not (Ensure-AppCreds -App $App)) {
             Write-Host "App '$($App.Name)': missing publishing creds and could not refetch." -ForegroundColor Red
-            return
+        
+            $App = $null
+            continue
         }
 
-        Write-Host "Starting shell on $($App.Name) ($($App.Platform)). Type 'exit' to quit." -ForegroundColor Green
+        Write-Host "Starting shell on $($App.Name) ($($App.Platform)). Type 'exit' to switch app, 'quit' to quit." -ForegroundColor Green
+
         while ($true) {
             $cmd = Read-Host "$($App.Name)>"
-            if ($cmd -eq 'exit' -or $cmd -eq 'quit') { break }
-            if ([string]::IsNullOrWhiteSpace($cmd))   { continue }
+            if ($cmd -eq 'quit') { return }  
+            if ($cmd -eq 'exit') { $App = $null; break }  
+            if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
             try {
                 $r = Invoke-WebAppCommand -App $App -Command $cmd
                 if ($r.Output) { $r.Output.TrimEnd("`r","`n") | Write-Host -ForegroundColor White }
@@ -631,7 +627,9 @@ function GetTenantID{param([string]$TenantName)
                 Write-Host $_.Exception.Message -ForegroundColor Red
             }
         }
+    
     }
+}
 
 
     function Select-WebApp {
@@ -667,3 +665,4 @@ function GetTenantID{param([string]$TenantName)
     }
     main
 }
+
