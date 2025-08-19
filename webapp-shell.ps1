@@ -300,6 +300,87 @@ function GetTenantID{param([string]$TenantName)
     }
 
 
+
+function Get-KuduBaseAndHeaders {
+    param([Parameter(Mandatory)][pscustomobject]$App)
+
+    if (-not (Ensure-AppCreds -App $App)) {
+        throw "App '$($App.Name)': no usable publishing creds (enable BasicAuth or fetch publish profile)."
+    }
+
+    $scmBase = if ($App.Credentials.ScmUri) {
+        "https://" + ([uri]$App.Credentials.ScmUri).Host
+    } else {
+        "https://$($App.Name).scm.azurewebsites.net"
+    }
+
+    $pair    = "$($App.Credentials.PublishingUserName):$($App.Credentials.PublishingPassword)"
+    $basic   = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+    $headers = @{ Authorization = "Basic $basic" }
+
+    return [pscustomobject]@{ Base=$scmBase; Headers=$headers }
+}
+
+function Test-KuduCapabilities {
+    param([Parameter(Mandatory)][pscustomobject]$App)
+
+    $ku = Get-KuduBaseAndHeaders -App $App
+
+    $cap = [ordered]@{
+        ScmBase        = $ku.Base
+        HasInfo        = $false
+        HasEnvironment = $false
+        HasVfs         = $false
+        HasCommandApi  = $false
+        IsFunctionApp  = $false
+        KuduVersion    = $null
+        Platform       = $App.Platform
+    }
+
+    try {
+        $info = Invoke-RestMethod -Method GET -Uri "$($ku.Base)/api/info" -Headers $ku.Headers -ErrorAction Stop
+        $cap.HasInfo     = $true
+        if ($info.version) { $cap.KuduVersion = $info.version }
+    } catch {}
+
+    try {
+        $env = Invoke-RestMethod -Method GET -Uri "$($ku.Base)/api/environment" -Headers $ku.Headers -ErrorAction Stop
+        $cap.HasEnvironment = $true
+        if ($env.Values -and ($env.Values["FUNCTIONS_EXTENSION_VERSION"] -or $env.Values["FUNCTIONS_WORKER_RUNTIME"])) {
+            $cap.IsFunctionApp = $true
+        }
+    } catch {}
+
+    try {
+     
+        $null = Invoke-RestMethod -Method GET -Uri "$($ku.Base)/api/vfs/" -Headers $ku.Headers -ErrorAction Stop
+        $cap.HasVfs = $true
+    } catch {}
+
+    try {
+
+        $testBody = @{ command = "echo ping"; dir = if ($App.Platform -eq 'Linux') { "/home" } else { "D:\home" } } | ConvertTo-Json
+        $resp = Invoke-RestMethod -Method POST -Uri "$($ku.Base)/api/command" -Headers $ku.Headers -ContentType 'application/json' -Body $testBody -ErrorAction Stop
+        $cap.HasCommandApi = $true
+    } catch {
+        $we = $_.Exception
+        if ($we.Response -and $we.Response.StatusCode -eq 404) {
+            $cap.HasCommandApi = $false
+        } elseif ($we.Response -and ($we.Response.StatusCode -eq 400 -or $we.Response.StatusCode -eq 500 -or $we.Response.StatusCode -eq 401 -or $we.Response.StatusCode -eq 403)) {
+           
+            $cap.HasCommandApi = $true
+        }
+    }
+
+    return [pscustomobject]$cap
+}
+
+function Open-WebAppDebugConsole {
+    param([Parameter(Mandatory)][pscustomobject]$App)
+    $ku = Get-KuduBaseAndHeaders -App $App
+    Start-Process "$($ku.Base)/newui"
+}
+
     function Get-WebApp {
         param (
             [string]$AzureARMToken,
@@ -419,7 +500,6 @@ function GetTenantID{param([string]$TenantName)
                     $ftpPass = if ($ftpProf) { $ftpProf.userPWD } else { $null }
                     $ftpsHost= if ($ftpProf -and $ftpProf.publishUrl) { $ftpProf.publishUrl } elseif ($site.properties.ftpsHostName) { $site.properties.ftpsHostName } else { $null }
 
-                    # Fallbackים מינימליים
                     if (-not $pubUser -and $msUser) { $pubUser = $msUser }
                     if (-not $pubPass -and $msPass) { $pubPass = $msPass }
                     if (-not $scmUri  -and $site.name) { $scmUri = "https://$($site.name).scm.azurewebsites.net/" }
@@ -639,30 +719,52 @@ function Start-WebAppShell {
     }
 
 
-    function main{
-		
-		    $creds = Show-ClientLoginGui -Topmost
-			if ($creds) {
-				$script:ClientId     = $creds.ClientId
-				$script:ClientSecret  = $creds.ClientSecret
-				$DomainName   = $creds.Domain
-			
-			}
+function main {
+   
+    $creds = Show-ClientLoginGui -Topmost
+    if (-not $creds) { Write-Host "Canceled." -ForegroundColor Yellow; return }
 
-		$script:TenantId = GetTenantID -TenantName $DomainName
-       
+    $script:ClientId     = $creds.ClientId
+    $script:ClientSecret = $creds.ClientSecret
+    $DomainName          = $creds.Domain
 
-        $ARM = GetAzureARMToken -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId
-        $script:ArmToken = $ARM
 
-        $subs = GetSubscriptions -AzureARMToken $ARM
+    $script:TenantId = GetTenantID -TenantName $DomainName
+    if (-not $script:TenantId) { Write-Host "Could not resolve Tenant ID." -ForegroundColor Red; return }
 
-        Get-WebApp -AzureARMToken $ARM -Subscriptions $subs -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId -AutoEnableBasicAuth
-
-        
-        $app = Select-WebApp
-        Start-WebAppShell -App $app
+    $ARM = GetAzureARMToken -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId
+    if (-not $ARM -or ($ARM -is [System.Management.Automation.ErrorRecord])) {
+        Write-Host "Failed to get ARM token." -ForegroundColor Red
+        return
     }
+    $script:ArmToken = $ARM
+    $subs = GetSubscriptions -AzureARMToken $ARM
+    Get-WebApp -AzureARMToken $ARM -Subscriptions $subs -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId  -AutoEnableBasicAuth
+
+    if (-not $global:WebApps -or $global:WebApps.Count -eq 0) {
+        Write-Host "No WebApps found." -ForegroundColor Yellow
+        return
+    }
+	
+    while ($true) {
+        try {
+            $app = Select-WebApp
+        } catch {
+            break
+        }
+        if (-not $app) { break }
+		
+        $exitReason = Start-WebAppShell -App $app
+
+        if ($exitReason -eq 'quit') { break }
+		
+        $cap = Test-KuduCapabilities -App $app
+        if (-not $cap.HasCommandApi) {
+            Write-Host "Opening Kudu Debug Console for '$($app.Name)'..." -ForegroundColor Yellow
+            Open-WebAppDebugConsole -App $app
+        }
+    }
+}
     main
 }
 
