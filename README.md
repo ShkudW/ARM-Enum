@@ -1,19 +1,51 @@
-# Vaulter
-Smart Tool for Enumerate and abuse Azure Key Vault
+# ARM-Enum&Abuse
+Collection Tools for Enumeration and abuse Azure WebApp and Azure Key Vaults recources
 
-This tool was developed after we broke EntraID enviroment, and find strong Serivce Principal
-for understanding what was his ability on Azure Resource API, I build this tool to enumeration Ket Vault Resources
-and abuse RBAC or Access Policy for set my Identity permissions and exctracting data..
+These tools developed for help IT Administrators (not not realy..)...
+These tools are developed for Red Teamers, who secceded to find high privileged Service Prinicpal with high permissions on ARM API.
+for data exflitration with Vaulter.ps1
+or for letaral movment with WebApp-Shell.ps1
+or for enumeration on WebApps with EnumWebApp.ps1
 
-Simple use:
-Import the tool on PowerShell Terminal:
+### Vaulter
+this tool is checking if the key vault is manged by RBAC or by Access Policy, and abuse yout Ideneity's pemissions for adding:
+- "Key Vault Administrator" role (RBAC), and adding your IP Addres to NetWork Rule.
+- Adding your Object ID (of your Identity) (Access Policy), and adding your IP Addres to NetWork Rule.
+
 ```powershell
 Import-Module Vaulter.ps1
 ```
-
-Run:
 ```powershell
 Vaulter
+```
+A file called 'kv_results.ndjson' will created, and all the data will be there
+In the end of running, use Report-Builder.ps1 for create a beautiful report for you data baby
+
+```powershell
+Import-Module Report-Builder.ps1
+```
+```powershell
+Import-Module Report-Builder -InputFile .\kv_results.ndjson
+```
+### WebApp-Shell
+Enumerating all WebApp and trying to create an interactive shell (by using KUDU actions/api)
+
+```powershell
+Import-Module WebApp-Shell.ps1
+```
+```powershell
+WebApp-Shell
+```
+
+### EnumWebApp
+Enumerating all WebApp, and check if "/.env" file is exsit with public access
+and more fuzzing stafffff
+
+```powershell
+Import-Module EnumWebApp.ps1
+```
+```powershell
+EnumWebApp
 ```
 
 Enter Service Principal Credentials:
@@ -22,13 +54,4 @@ Enter Service Principal Credentials:
 
 
 
-A file called 'kv_results.ndjson' will created, and all the data will be there
-In the end of running, use Report-Builder.ps1 for create a beautiful report for you data baby
 
-```powershell
-Import-Module Report-Builder.ps1
-```
-
-```powershell
-Import-Module Report-Builder -InputFile .\kv_results.ndjson
-```
