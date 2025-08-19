@@ -37,15 +37,15 @@ Import-Module WebApp-Shell.ps1
 WebApp-Shell
 ```
 
-### EnumWebApp
+### WebAppEnum
 Enumerating all WebApp, and check if "/.env" file is exsit with public access
 and more fuzzing stafffff
 
 ```powershell
-Import-Module EnumWebApp.ps1
+Import-Module WebAppEnum.ps1
 ```
 ```powershell
-EnumWebApp
+WebAppEnum
 ```
 
 Enter Service Principal Credentials:
