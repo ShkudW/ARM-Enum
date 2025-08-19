@@ -67,7 +67,7 @@ function Vaulter{
 
         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="Vaulter - Key Vault Enumeration" Foreground="#f8fafc" FontSize="22" FontWeight="Bold"/>
-          <TextBlock Text="By ART - AB-inBev 2025" Foreground="#E0E7FF" FontSize="13"/>
+          <TextBlock Text="By @ShkudW - https://github.com/ShkudW/ARM-Enum " Foreground="#E0E7FF" FontSize="13"/>
         </StackPanel>
       </Grid>
     </Border>
