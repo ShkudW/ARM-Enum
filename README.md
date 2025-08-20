@@ -26,7 +26,7 @@ In the end of running, use Report-Builder.ps1 for create a beautiful report for 
 Import-Module Report-Builder.ps1
 ```
 ```powershell
-Import-Module Report-Builder -InputFile .\kv_results.ndjson
+Report-Builder -InputFile .\kv_results.ndjson
 ```
 ### WebApp-Shell
 Enumerating all WebApp and trying to create an interactive shell (by using KUDU api/command API)
