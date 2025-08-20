@@ -69,7 +69,7 @@ function WebAppEnum {
 
         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="WebApp Enumeration" Foreground="#f8fafc" FontSize="22" FontWeight="Bold"/>
-          <TextBlock Text="By @ShkudW - https://github.com/ShkudW/ARM-Enum " Foreground="#E0E7FF" FontSize="13"/>
+          <TextBlock Text="By ART - AB-inBev 2025" Foreground="#E0E7FF" FontSize="13"/>
         </StackPanel>
       </Grid>
     </Border>
@@ -565,10 +565,8 @@ function Test-WebAppSurface {
 		$scheme = if ($HttpsOnly) { 'https' } else { 'http' }
 		$schemes += $scheme
 
-		$envCandidates = @('.env')
-		if ($TryCommonVariants) {
-			$envCandidates += '.env.local','.env.production','.env.prod','.env.dev','.env.stage','.env.staging'
-		}
+		$envCandidates = @('.env','appsettings.json','azuredeploy.json','phpmyadmin/')
+
 
 		$ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
 		$headers = @{ 'Accept'='*/*'; 'User-Agent'=$ua }
@@ -785,6 +783,9 @@ function Test-WebAppSurface {
 		$ARM = GetAzureARMToken -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId
         $script:ArmToken = $ARM
         $subs = GetSubscriptions -AzureARMToken $ARM
+		#$subs = @(
+		#	[PSCustomObject]@{ DisplayName="aaaa"; SubscriptionId="aaaaa" }
+		#)
         Get-AllWebApps -AzureARMToken $ARM -Subscriptions $subs -ClientID $script:ClientId -ClientSecret $script:ClientSecret -TenantID $script:TenantId 
 
 	}
