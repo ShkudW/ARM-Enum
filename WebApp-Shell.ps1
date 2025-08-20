@@ -179,7 +179,7 @@ function GetTenantID {
 function GetAzureARMToken {
     param([string]$RefreshToken,[string]$ClientID,[string]$ClientSecret,[string]$TenantID)
     $Url = "https://login.microsoftonline.com/$TenantID/oauth2/v2.0/token"
-    $Headers = @{ "User-Agent" = "Mozilla/5.0" }
+    $Headers = @{ "User-Agent" = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36" }
     if ($RefreshToken -and -not $ClientID -and -not $ClientSecret) {
         $Body = @{ client_id="d3590ed6-52b3-4102-aeff-aad2292ab01c"; scope="https://management.azure.com/.default"; grant_type="refresh_token"; refresh_token=$RefreshToken }
     } elseif ($ClientID -and $ClientSecret -and -not $RefreshToken) {
@@ -193,7 +193,7 @@ function GetAzureARMToken {
 
 function GetSubscriptions {
     param([string]$AzureARMToken,[int]$MaxRetries = 8)
-    $Headers = @{ 'Authorization'="Bearer $AzureARMToken"; 'Accept'='application/json'; 'User-Agent'="Mozilla/5.0" }
+    $Headers = @{ 'Authorization'="Bearer $AzureARMToken"; 'Accept'='application/json'; 'User-Agent'="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36" }
     $out = @(); $url="https://management.azure.com/subscriptions?api-version=2021-01-01"
     while ($url) {
         $attempt=0
@@ -220,7 +220,10 @@ function GetSubscriptions {
 
 function Test-CanToggleScmBasicAuth {
     param([string]$SubscriptionId,[string]$ResourceGroupName,[string]$SiteName,[string]$AzureAccessToken)
-    $headers = @{ Authorization = "Bearer $AzureAccessToken" }
+    $headers = @{ 
+    'Authorization' = "Bearer $AzureAccessToken" 
+    'User-Agent' ="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+    }
     $permUrl = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Web/sites/$SiteName/providers/Microsoft.Authorization/permissions?api-version=2022-04-01"
     $resp = Invoke-RestMethod -Uri $permUrl -Headers $headers -Method GET
 
@@ -283,7 +286,6 @@ function Ensure-AppCreds {
         $headersArm = @{ Authorization = "Bearer $script:ArmToken"; Accept='application/json' }
         $base = "https://management.azure.com/subscriptions/$($App.SubscriptionId)/resourceGroups/$($App.ResourceGroup)/providers/Microsoft.Web/sites/$($App.Name)"
 
-        # בדיקת מצב SCM & הדלקה זמנית אם כבוי
         $pol = Invoke-RestMethod "$base/basicPublishingCredentialsPolicies?api-version=2024-11-01" -Headers $headersArm -ErrorAction Stop
         $prevScm = ($pol.value | Where-Object name -eq 'scm').properties.allow
         $turnedOn = $false
@@ -299,7 +301,6 @@ function Ensure-AppCreds {
             }
         }
 
-        # עדכני: JSON creds
         $list = $null
         try {
             $list = Invoke-RestMethod -Method POST -Uri "$base/config/publishingcredentials/list?api-version=2024-11-01" -Headers $headersArm -ErrorAction Stop
@@ -310,7 +311,6 @@ function Ensure-AppCreds {
             $App.Credentials.PublishingPassword = $list.properties.publishingPassword
         }
 
-        # החזרה למצב קודם
         if ($turnedOn) {
             $bodyScm = @{ properties = @{ allow = [bool]$prevScm } } | ConvertTo-Json
             try { Invoke-RestMethod -Method PUT -Uri "$base/basicPublishingCredentialsPolicies/scm?api-version=2024-11-01" -Headers $headersArm -ContentType 'application/json' -Body $bodyScm | Out-Null } catch {}
@@ -367,8 +367,12 @@ function Get-WebConfig {
         [string]$Bearer,
         [string]$Slot 
     )
-    $h = @{ Authorization = "Bearer $Bearer"; Accept='application/json' }
-    $apiVersions = @('2024-11-01','2023-01-01','2022-09-01')  # fallback על גרסאות יציבות
+    $h = @{ 
+        "Authorization" = "Bearer $Bearer"
+        "Accept" ='application/json' 
+        "User-Agent" = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+    }
+    $apiVersions = @('2024-11-01','2023-01-01','2022-09-01')
     $base = "https://management.azure.com/subscriptions/$Sub/resourceGroups/$Rg/providers/Microsoft.Web/sites/$Site"
     foreach ($ver in $apiVersions) {
         $cfgUrl = if ($Slot) {
@@ -496,8 +500,12 @@ function Get-WebApp {
                     if ($code -eq 429 -and $attempt -le $MaxRetries) {
                         $retryAfter = $httpResp.Headers['Retry-After']; if (-not $retryAfter) { $retryAfter = 60 }; Start-Sleep -Seconds ([int]$retryAfter); continue
                     } elseif ($code -eq 401) {
-                        if     ($ClientID -and $ClientSecret -and $TenantID) { $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID }
-                        elseif ($RefreshToken -and $TenantID)               { $AzureARMToken = GetAzureARMToken -RefreshToken $RefreshToken -TenantID $TenantID }
+                        if ($ClientID -and $ClientSecret -and $TenantID) {
+                            $AzureARMToken = GetAzureARMToken -ClientID $ClientID -ClientSecret $ClientSecret -TenantID $TenantID
+                        }
+                        elseif ($RefreshToken -and $TenantID) {
+                            $AzureARMToken = GetAzureARMToken -RefreshToken $RefreshToken -TenantID $TenantID 
+                        }
                         else { throw }
                         $HeadersARM['Authorization'] = "Bearer $AzureARMToken"
                         if ($attempt -le $MaxRetries) { continue } else { throw }
@@ -571,7 +579,7 @@ function Get-WebApp {
 function ChnageSCM { 
     param([string]$AzureARMToken,[string]$SubscriptionId,[string]$ResourceGroup,[string]$WPName,[switch]$Add,[switch]$Delete)
     $scmPolUrl = "https://management.azure.com/subscriptions/$($SubscriptionId)/resourceGroups/$($ResourceGroup)/providers/Microsoft.Web/sites/$($WPName)/basicPublishingCredentialsPolicies/scm?api-version=2024-11-01"
-    $HeadersARM = @{ 'Authorization'="Bearer $AzureARMToken"; 'Accept'='application/json'; 'User-Agent'="Mozilla/5.0" }
+    $HeadersARM = @{ 'Authorization'="Bearer $AzureARMToken"; 'Accept'='application/json'; 'User-Agent'="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36" }
 
     if ($Add) {
         $BodyChangeSCM = @{ properties = @{ allow = $true } } | ConvertTo-Json -Depth 3
@@ -651,7 +659,11 @@ function Start-WebAppShell {
         $script:CurrentApp = $App
 
         
-        $polHeaders = @{ Authorization = "Bearer $AzureARMToken"; Accept='application/json' }
+        $polHeaders = @{ 
+            "Authorization" = "Bearer $AzureARMToken"
+            "Accept" = "application/json" 
+            "User-Agent" = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+        }
         $base = "https://management.azure.com/subscriptions/$($App.SubscriptionId)/resourceGroups/$($App.ResourceGroup)/providers/Microsoft.Web/sites/$($App.Name)"
         $prevScm = $true; $scmChanged = $false
         try {
@@ -687,7 +699,7 @@ function Start-WebAppShell {
         if ($needTempIp) {
             if (-not $MyIpCidr) { $MyIpCidr = (Get-MyPublicIp -CIDR) }
             if (-not $MyIpCidr) {
-                Write-Host "Cannot determine public IP. Provide -MyIpCidr (e.g. X.X.X.X/32)" -ForegroundColor Red
+                Write-Host "Cannot determine public IP. Provide -MyIpCidr ( X.X.X.X/32)" -ForegroundColor Red
                 if ($scmChanged) { ChnageSCM -AzureARMToken $AzureARMToken -SubscriptionId $App.SubscriptionId -ResourceGroup $App.ResourceGroup -WPName $App.Name -Delete }
                 return
             }
