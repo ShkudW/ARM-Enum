@@ -30,7 +30,7 @@ Import-Module Report-Builder.ps1
 Report-Builder -InputFile .\kv_results.ndjson
 ```
 ### WebApp-Shell
-Enumerating all WebApp and trying to create an interactive shell (by using KUDU api/command API)
+Enumerating all WebApp and trying to create an interactive shell (by using KUDU/SCM api/command API)
 
 ```powershell
 Import-Module WebApp-Shell.ps1
