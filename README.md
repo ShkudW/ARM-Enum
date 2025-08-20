@@ -1,5 +1,5 @@
 # ARM-Enum&Abuse
-Collection Tools for Enumeration and abuse Azure WebApp and Azure Key Vaults recources
+Post Exploitation Collection Tools for Enumeration and abuse Azure WebApp and Azure Key Vaults recources
 
 These tools developed for help IT Administrators (not not realy..)...
 These tools are developed for Red Teamers, whos secceded to find a high privileged Service Prinicpal with high permissions on ARM API.
