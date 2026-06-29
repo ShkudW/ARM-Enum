@@ -1,4 +1,4 @@
-Function Invoke-ARMMEnum {
+Function Invoke-ARMEnum {
     param (
         [string]$AccessToken,
         [string]$ClientID,
