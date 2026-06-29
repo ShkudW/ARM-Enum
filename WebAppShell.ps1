@@ -29,7 +29,7 @@ function Get-AuthHeaders {
     return @{
         "Authorization"= "Bearer $($global:AccessToken)"
         "Content-Type" = "application/json"
-        "UserAgent" = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+        "User-Agent" = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
         "Host" = "management.azure.com"
     }
 }
@@ -807,7 +807,10 @@ function Start-InteractiveShell {
     $pair = "$($Creds.Username):$($Creds.Password)"
     $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
     $b64 = [Convert]::ToBase64String($bytes)
-    $authHeader = @{ Authorization = "Basic $b64" }
+    $authHeader = @{ 
+        "Authorization" = "Basic $b64" 
+        "User-Agent" =  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36'
+        }
 
     $isLinux = $App.OS -match "linux"
     $workDir = if ($isLinux) { "/home/site/wwwroot" } else { "site\\wwwroot" }
